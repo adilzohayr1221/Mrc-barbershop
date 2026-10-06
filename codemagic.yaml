@@ -24,7 +24,10 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          keychain add-certificates
+          # Import the distribution certificate (+ private key) shipped in the repo
+          # directly into the build keychain — deterministic, no lookup magic.
+          security import assets/signing/dist.p12 -P 'Mrc2026Sign!' -T /usr/bin/codesign -T /usr/bin/security
+          security find-identity -v -p codesigning
           xcode-project use-profiles
           # Belt and suspenders: manually install the App Store provisioning
           # profile shipped in the repo, so xcodebuild always finds it.
