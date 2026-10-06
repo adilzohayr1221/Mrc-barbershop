@@ -28,6 +28,27 @@ workflows:
           # Fetch the App Store provisioning profile directly by UUID (bypass name matching)
           app-store-connect fetch-signing-files "com.mrc.barbershop" --type IOS_APP_STORE
           ls ~/Library/MobileDevice/"Provisioning Profiles"/
+      - name: Generate export options
+        script: |
+          cat > /Users/builder/export_options.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>756WTBLYPA</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.mrc.barbershop</key>
+                  <string>MRC Barbershop App Store</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          echo "export_options.plist written:"
+          cat /Users/builder/export_options.plist
       - name: Build .ipa
         script: |
           xcode-project build-ipa \
