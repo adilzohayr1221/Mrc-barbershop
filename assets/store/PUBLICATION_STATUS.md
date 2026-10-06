@@ -18,11 +18,18 @@
 
 ## ⚠️ Blockers only the user can clear
 
-- **iOS build needs a Mac.** The final `.ipa` must be built with Xcode (macOS only).
-  Options: (a) user has a Mac → build there; (b) Codemagic cloud build → needs
-  App Store Connect API key from the user's account; (c) GitHub Actions macOS runner.
+- **iOS build needs a Mac.** Resolved via Codemagic cloud build (repo github.com/adilzohayr1221/Mrc-barbershop, app "Mrc-barbershop", workflow ios-release, App Store Connect API integration ACTIVE with the new "Codemagic" key YG49KM32HZ). Build #2 (2026-10-06 12:07 EDT, build 6ac5150a7394575b200bb3a5) FAILED at step 5 "Fetch signing files (App Store Connect API)": `Cannot save Signing Certificates without certificate private key`. Fix options: (a) revoke the distribution certificate in the Apple Developer Portal and let Codemagic auto-signing create a fresh one with a private key it holds; (b) upload the existing .p12 (certificate + private key) into Codemagic Code signing identities. Option (a) touches his Apple Developer account → confirm with him first; option (b) needs the .p12 from wherever the cert was created.
+
 - **Submission needs his logins.** App Store Connect + Play Console are identity-bound.
   He must create the app records and either submit himself or add me via browser takeover.
+
+## Build history (2026-10-06)
+
+- Build #6 (6ac52a0c7394575b200bbb3d, commit cef7874): FAILED at "Build .ipa" — `ios/App/App.xcworkspace` didn't exist (pod install missing).
+- Build #7 (6ac532697394575b200bbdd4): FAILED — "No Podfile found" (project uses Capacitor 8 SPM, not CocoaPods).
+- Build #8 (6ac5399f7394575b200bc02e, commit 5832382 "Fix: build xcodeproj directly (SPM, no Pods)", 14:24 EDT, 1m12s): FAILED at step 5 "Build .ipa" during "Archive App.xcodeproj" — xcodebuild exit status 65: `error: "App" requires a provisioning profile. Select a provisioning profile in the Signing & Capabilities editor. (in target 'App' from project 'App')`. No provisioning profile configured for manual code signing. No .ipa produced; only `Mrc-barbershop_8_artifacts.zip` [10.61 KB] (logs). Publishing to App Store Connect did not run.
+- Signing was already switched to manual code signing with a distribution certificate + App Store provisioning profile N5HCH7FK97 uploaded to Codemagic; the archive step still can't resolve the profile for target 'App'. Likely next fix: check Codemagic code-signing settings (manual signing profile name/type, "Use Xcode-managed signing" off, profile bound to bundle id com.mrc.barbershop), or let Codemagic auto-signing manage it.
+- The 20-min monitor cron `codemagic-build-8-monitor` was removed after the failed status was confirmed.
 
 ## Next steps (in order)
 
