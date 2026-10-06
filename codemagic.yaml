@@ -1,5 +1,6 @@
 # Codemagic CI — builds the iOS .ipa for MRC Barbershop (Capacitor)
-# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-react-native-app/
+# Uses Codemagic automatic iOS code signing with the App Store Connect API key
+# integration (configured at team level as "App Store Connect API key").
 workflows:
   ios-release:
     name: iOS Release (App Store)
@@ -10,15 +11,13 @@ workflows:
     environment:
       node: 22
       xcode: latest
+      ios_signing:
+        distribution_type: app_store
+        bundle_ids:
+          - com.mrc.barbershop
       vars:
         APP_ID: com.mrc.barbershop
         APP_NAME: MRC Barbershop
-      # Code signing is set up in the Codemagic UI (Teams > Integrations >
-      # Apple Developer Portal) OR via the following env vars (group: appstore):
-      #   APP_STORE_CONNECT_ISSUER_ID
-      #   APP_STORE_CONNECT_KEY_IDENTIFIER
-      #   APP_STORE_CONNECT_PRIVATE_KEY
-      #   CERTIFICATE_PRIVATE_KEY  (for manual signing, if not using API key)
     scripts:
       - name: Install dependencies
         script: |
@@ -26,17 +25,6 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
-      - name: Set up keychain for code signing
-        script: |
-          keychain initialize
-      - name: Fetch signing files (App Store Connect API)
-        script: |
-          app-store-connect fetch-signing-files "$APP_ID" \
-            --type IOS_APP_STORE \
-            --create
-      - name: Set up signing settings
-        script: |
-          xcode-project use-profiles
       - name: Build .ipa
         script: |
           xcode-project build-ipa \
