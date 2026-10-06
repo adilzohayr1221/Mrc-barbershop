@@ -21,6 +21,7 @@ workflows:
       - name: Sync Capacitor iOS
         script: |
           npx cap sync ios
+          cd ios/App && pod install
       - name: Set up code signing
         script: |
           keychain initialize
