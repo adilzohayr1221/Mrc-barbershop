@@ -8,7 +8,7 @@ workflows:
     integrations:
       app_store_connect: "App Store Connect API key"
     environment:
-      node: 20
+      node: 22
       xcode: latest
       vars:
         APP_ID: com.mrc.barbershop
