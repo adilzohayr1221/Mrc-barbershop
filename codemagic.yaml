@@ -9,6 +9,8 @@ workflows:
     environment:
       node: 22
       xcode: latest
+      groups:
+        - ios-signing
       vars:
         APP_ID: com.mrc.barbershop
         APP_NAME: MRC Barbershop
