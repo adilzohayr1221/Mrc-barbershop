@@ -25,13 +25,15 @@ workflows:
         script: |
           keychain initialize
           keychain add-certificates
-          xcode-project use-profiles
+          # Fetch the App Store provisioning profile directly by UUID (bypass name matching)
+          app-store-connect fetch-signing-files "com.mrc.barbershop" --type IOS_APP_STORE
+          ls ~/Library/MobileDevice/"Provisioning Profiles"/
       - name: Build .ipa
         script: |
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
-            --archive-flags "PROVISIONING_PROFILE_SPECIFIER='MRC Barbershop App Store' CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
+            --archive-flags "PROVISIONING_PROFILE=d05321b2-d80c-428e-b9a2-fa98c749ac23 CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
