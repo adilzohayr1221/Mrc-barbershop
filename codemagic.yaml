@@ -1,6 +1,4 @@
 # Codemagic CI — builds the iOS .ipa for MRC Barbershop (Capacitor)
-# Code signing files (dist.p12 + profile.mobileprovision) are uploaded
-# in Codemagic UI: App settings > Code signing > iOS code signing.
 workflows:
   ios-release:
     name: iOS Release (App Store)
@@ -24,16 +22,12 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          # Plan B: let Codemagic fetch (or create) the signing files automatically
-          # via the App Store Connect API integration. Codemagic generates and
-          # manages the private key itself — no manual .p12 password issues.
-          app-store-connect fetch-signing-files com.mrc.barbershop --type IOS_APP_STORE --create
           keychain add-certificates
-          xcode-project use-profiles
-          security find-identity -v -p codesigning
-      - name: Generate export options
+          app-store-connect fetch-signing-files "com.mrc.barbershop" --type IOS_APP_STORE
+          ls ~/Library/MobileDevice/"Provisioning Profiles"/
+      - name: Create export options
         script: |
-          cat > /Users/builder/export_options.plist << 'EOF'
+          cat > ~/export_options.plist << 'PLISTEOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -42,21 +36,18 @@ workflows:
               <string>app-store</string>
               <key>teamID</key>
               <string>756WTBLYPA</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>com.mrc.barbershop</key>
-                  <string>MRC Barbershop App Store</string>
-              </dict>
           </dict>
           </plist>
-          EOF
-          echo "export_options.plist written:"
-          cat /Users/builder/export_options.plist
+          PLISTEOF
+          echo "Export options created:"
+          cat ~/export_options.plist
       - name: Build .ipa
         script: |
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
-            --scheme App
+            --scheme App \
+            --export-options-plist ~/export_options.plist \
+            --archive-flags "PROVISIONING_PROFILE=d05321b2-d80c-428e-b9a2-fa98c749ac23 CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
