@@ -22,7 +22,13 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          keychain add-certificates
+          # Decrypt the distribution certificate and import to keychain
+          openssl enc -d -aes-256-cbc -in ios/dist-final.p12.enc -out /tmp/dist.p12 -pass pass:$P12_DECRYPT_PASSWORD
+          security import /tmp/dist.p12 -k ~/Library/Keychains/build.keychain -P $P12_PASSWORD -T /usr/bin/codesign -T /usr/bin/security
+          rm /tmp/dist.p12
+          echo "Certificate installed, listing identities:"
+          security find-identity -v ~/Library/Keychains/build.keychain
+          # Fetch the App Store provisioning profile
           app-store-connect fetch-signing-files "com.mrc.barbershop" --type IOS_APP_STORE
           ls ~/Library/MobileDevice/"Provisioning Profiles"/
       - name: Create export options
@@ -39,15 +45,14 @@ workflows:
           </dict>
           </plist>
           PLISTEOF
-          echo "Export options created:"
-          cat ~/export_options.plist
+          echo "Export options created"
       - name: Build .ipa
         script: |
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
             --export-options-plist ~/export_options.plist \
-            --archive-flags "PROVISIONING_PROFILE=d05321b2-d80c-428e-b9a2-fa98c749ac23 CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
+            --archive-flags "PROVISIONING_PROFILE=d4585252-7de1-476f-8373-80a9e71eedca CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
