@@ -13,8 +13,7 @@ workflows:
       xcode: latest
       ios_signing:
         distribution_type: app_store
-        bundle_ids:
-          - com.mrc.barbershop
+        bundle_identifier: com.mrc.barbershop
       vars:
         APP_ID: com.mrc.barbershop
         APP_NAME: MRC Barbershop
