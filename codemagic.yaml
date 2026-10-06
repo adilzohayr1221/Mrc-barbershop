@@ -31,7 +31,7 @@ workflows:
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
-            --archive-flags "PROVISIONING_PROFILE_SPECIFIER='MRC Barbershop App Store' CODE_SIGN_IDENTITY='iPhone Distribution'"
+            --archive-flags "PROVISIONING_PROFILE_SPECIFIER='MRC Barbershop App Store' CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
