@@ -24,16 +24,13 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          # Import the distribution certificate (+ private key) shipped in the repo
-          # directly into the build keychain — deterministic, no lookup magic.
-          security import assets/signing/dist.p12 -P 'Mrc2026Sign!' -T /usr/bin/codesign -T /usr/bin/security
-          security find-identity -v -p codesigning
+          # Plan B: let Codemagic fetch (or create) the signing files automatically
+          # via the App Store Connect API integration. Codemagic generates and
+          # manages the private key itself — no manual .p12 password issues.
+          app-store-connect fetch-signing-files com.mrc.barbershop --type IOS_APP_STORE --create
+          keychain add-certificates
           xcode-project use-profiles
-          # Belt and suspenders: manually install the App Store provisioning
-          # profile shipped in the repo, so xcodebuild always finds it.
-          mkdir -p ~/Library/MobileDevice/"Provisioning Profiles"
-          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/
-          ls ~/Library/MobileDevice/"Provisioning Profiles"/
+          security find-identity -v -p codesigning
       - name: Generate export options
         script: |
           cat > /Users/builder/export_options.plist << 'EOF'
