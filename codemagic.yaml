@@ -26,7 +26,7 @@ workflows:
           keychain initialize
           # Decrypt the distribution certificate and import to keychain
           openssl enc -d -aes-256-cbc -in ios/dist-final.p12.enc -out /tmp/dist.p12 -pass pass:$P12_DECRYPT_PASSWORD
-          keychain add-certificates --certificate /tmp/dist.p12
+          keychain add-certificates --certificate /tmp/dist.p12 --certificate-password 1234
           rm /tmp/dist.p12
           echo "Certificate installed, listing identities:"
           security find-identity -v
