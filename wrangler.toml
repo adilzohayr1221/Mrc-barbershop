@@ -1,0 +1,23 @@
+# Cloudflare Workers config for the MRC Barbershop Next.js app.
+# Deploy with: npx @opennextjs/cloudflare build && npx @opennextjs/cloudflare deploy
+name = "mrc-barbershop"
+compatibility_date = "2025-09-01"
+# nodejs_compat: the app uses node:crypto and Buffer (auth, ids, photo uploads).
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Public, non-secret values.
+# NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_..."
+
+# Secrets (set with `wrangler secret put <NAME>` — never commit values):
+#   STRIPE_SECRET_KEY
+#   R2_ACCOUNT_ID
+#   R2_ACCESS_KEY_ID
+#   R2_SECRET_ACCESS_KEY
+#   R2_BUCKET
+#   VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (push)
+#   (any other env the app previously read on Vercel)
+
+# Cron triggers (replaces the old external scheduler hitting /api/cron/*):
+# [triggers]
+# crons = ["*/30 * * * *"]
