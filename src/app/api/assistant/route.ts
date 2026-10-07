@@ -91,7 +91,9 @@ export async function POST(req: Request) {
   if (!apiKey) {
     return NextResponse.json({ error: 'The assistant is not set up yet.' }, { status: 503 });
   }
-  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  // Verified 2026-10-07 via live probe: gemini-3.5-flash responds 200.
+  // gemini-3.8-flash hangs, 3.7/3.6 return 503 — keep them only as last-resort fallbacks.
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   await ensureSeeded();
   const [services, branches, barbers] = await Promise.all([getServices(), getBranches(), getBarbers()]);
@@ -141,41 +143,49 @@ Facts:
     return NextResponse.json({ error: 'Invalid messages.' }, { status: 400 });
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
-  // Fallback chain: 2.5-flash is retired for new API keys (404), so we try
-  // the 3.x Flash family in order until one responds.
-  const models = [primaryModel, 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'].filter(
+  // Fallback chain: gemini-3.5-flash is verified working (200). Each attempt
+  // gets its OWN timeout so one hanging model can't kill the whole chain.
+  const models = [primaryModel, 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash'].filter(
     (m, i, a) => a.indexOf(m) === i
   );
 
   async function callGemini(model: string, key: string): Promise<string | null> {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents,
-          generationConfig: { temperature: 0.7, maxOutputTokens: 400 },
-        }),
+    const attempt = new AbortController();
+    const attemptTimer = setTimeout(() => attempt.abort(), 12000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: attempt.signal,
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 400 },
+          }),
+        }
+      );
+      const data = (await res.json().catch(() => null)) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+        error?: { message?: string; status?: string; code?: number };
+      } | null;
+      const reply = data?.candidates?.[0]?.content?.parts
+        ?.map((p) => (typeof p?.text === 'string' ? p.text : ''))
+        .join('')
+        .trim();
+      if (!res.ok || !reply) {
+        console.error('[assistant] gemini failed', model, res.status, JSON.stringify(data?.error ?? null).slice(0, 200));
+        return null;
       }
-    );
-    const data = (await res.json().catch(() => null)) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-      error?: { message?: string; status?: string; code?: number };
-    } | null;
-    const reply = data?.candidates?.[0]?.content?.parts
-      ?.map((p) => (typeof p?.text === 'string' ? p.text : ''))
-      .join('')
-      .trim();
-    if (!res.ok || !reply) {
-      console.error('[assistant] gemini failed', model, res.status, JSON.stringify(data?.error ?? null).slice(0, 200));
+      return reply;
+    } catch (err) {
+      // A hung or aborted attempt must NOT kill the fallback chain.
+      console.error('[assistant] gemini attempt error', model, String(err).slice(0, 120));
       return null;
+    } finally {
+      clearTimeout(attemptTimer);
     }
-    return reply;
   }
 
   try {
@@ -191,7 +201,5 @@ Facts:
       { error: 'The assistant is having trouble right now. Please try again or call (443) 741-5820.' },
       { status: 502 }
     );
-  } finally {
-    clearTimeout(timer);
   }
 }
