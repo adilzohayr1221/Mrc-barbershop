@@ -160,7 +160,7 @@ function ThanksInner() {
             rows={2}
             maxLength={1000}
             placeholder="What did you like?"
-            className="input w-full text-[15px] resize-none"
+            className="input w-full resize-none"
           />
 
           {(info.canTip || info.alreadyTipped) && (
@@ -194,7 +194,7 @@ function ThanksInner() {
                     onChange={(e) => { setCustomTip(e.target.value.replace(/[^0-9.]/g, '')); setTip(null); }}
                     placeholder="Custom amount"
                     inputMode="decimal"
-                    className="input w-full mt-2 text-[15px]"
+                    className="input w-full mt-2"
                   />
                 </>
               )}

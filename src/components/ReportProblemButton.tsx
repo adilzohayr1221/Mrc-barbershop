@@ -72,7 +72,7 @@ export function ReportProblemForm({ bookingId, barberName, getToken, onSent }: {
         rows={3}
         maxLength={1000}
         placeholder="e.g. The haircut is uneven on the left side…"
-        className="input w-full text-[15px] resize-none"
+        className="input w-full resize-none"
       />
       <label className="block text-[13px] font-bold text-neutral-700 mt-4 mb-1.5">
         Photo evidence — taken with your camera

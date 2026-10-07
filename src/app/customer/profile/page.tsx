@@ -232,7 +232,7 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
           {editingName ? (
             <div className="flex items-center gap-2">
               <input
-                className="input !py-2 text-[15px] font-bold"
+                className="input !py-2 font-bold"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={60}

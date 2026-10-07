@@ -106,6 +106,7 @@ body {
   padding: 0.8rem 1rem;
   color: #17130a;
   outline: none;
+  font-size: 16px; /* iOS Safari auto-zooms on focus when input font-size < 16px */
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .input::placeholder {
