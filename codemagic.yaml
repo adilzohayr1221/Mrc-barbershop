@@ -28,6 +28,9 @@ workflows:
           openssl enc -d -aes-256-cbc -in ios/dist-final.p12.enc -out /tmp/dist.p12 -pass pass:$P12_DECRYPT_PASSWORD
           keychain add-certificates --certificate /tmp/dist.p12 --certificate-password 1234
           rm /tmp/dist.p12
+          # Grant codesign access to the private key without prompts
+          KEYCHAIN_PATH=$(ls ~/Library/codemagic-cli-tools/keychains/*.keychain-db 2>/dev/null | head -1)
+          if [ -n "$KEYCHAIN_PATH" ]; then security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN_PATH" || true; fi
           echo "Certificate installed, listing identities:"
           security find-identity -v
           # Fetch the App Store provisioning profile
