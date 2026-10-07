@@ -66,5 +66,11 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>MRC Barbershop needs camera access to take photos for your profile, work galleries, and complaint reports.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MRC Barbershop needs photo library access to let you upload profile and work photos.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>MRC Barbershop uses your location to show the nearest branches first.</string>
 </dict>
 </plist>
