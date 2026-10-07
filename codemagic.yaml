@@ -44,6 +44,11 @@ workflows:
               <string>app-store</string>
               <key>teamID</key>
               <string>756WTBLYPA</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.mrc.barbershop</key>
+                  <string>MRC Barbershop App Store</string>
+              </dict>
           </dict>
           </plist>
           PLISTEOF
