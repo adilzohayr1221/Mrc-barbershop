@@ -84,6 +84,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   await saveBooking(booking);
 
+  // Loyalty & barber milestones: count this completed haircut.
+  try {
+    const { recordHaircut } = await import('@/lib/loyalty');
+    await recordHaircut({
+      barberId: booking.barberId,
+      customerId: booking.customerId,
+      paid: true,
+      salonId,
+    });
+  } catch (e) {
+    console.error('[done] loyalty hook failed', e);
+  }
+
   // The haircut is done (photo taken) — ask the customer to rate + tip.
   if (booking.customerId) {
     try {

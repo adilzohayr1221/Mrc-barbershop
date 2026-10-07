@@ -3,7 +3,7 @@
 // BEFORE reading anything that contains customer PII.
 import { getDoc, putDoc, listDocs, delDoc, putBinary, getBinary } from './blob';
 import { ensureSeeded } from './seed';
-import type { Branch, Barber, Service, Booking, BookingStatus, Review, PinsDoc, PublicBarber, Customer, Membership, MembershipRedemption, PushSubscriptionDoc, ChatDoc, ChatMessage, ChatMeta, Gift, TeamChatDoc, WorkPhoto, Complaint, Comp, Tip, SkillVerification, ShopProduct, ShopOrder, PartnerLead, Salon, SalonOwner, TenantScoped, SalonTask } from './types';
+import type { Branch, Barber, Service, Booking, BookingStatus, Review, PinsDoc, PublicBarber, Customer, Membership, MembershipRedemption, PushSubscriptionDoc, ChatDoc, ChatMessage, ChatMeta, Gift, TeamChatDoc, WorkPhoto, Complaint, Comp, Tip, SkillVerification, ShopProduct, ShopOrder, PartnerLead, Salon, SalonOwner, TenantScoped, SalonTask, BarberMilestone, CustomerLoyalty, LoyaltyReward } from './types';
 import { PLATFORM_SALON_ID } from './types';
 import { randomUUID } from 'node:crypto';
 
@@ -831,4 +831,63 @@ export async function listTasks(): Promise<SalonTask[]> {
 export async function deleteTask(id: string): Promise<void> {
   if (!/^[a-zA-Z0-9-]+$/.test(id)) return;
   await delDoc(taskPath(id));
+}
+
+/** Loyalty & barber milestone bonuses. `data/loyalty/barbers/<id>.json`,
+ *  `data/loyalty/customers/<id>.json`, `data/loyalty/rewards/<id>.json`. */
+const LOYALTY_BARBER_PREFIX = 'data/loyalty/barbers/';
+const LOYALTY_CUSTOMER_PREFIX = 'data/loyalty/customers/';
+const LOYALTY_REWARD_PREFIX = 'data/loyalty/rewards/';
+const loyaltyBarberPath = (id: string) => `${LOYALTY_BARBER_PREFIX}${id}.json`;
+const loyaltyCustomerPath = (id: string) => `${LOYALTY_CUSTOMER_PREFIX}${id}.json`;
+const loyaltyRewardPath = (id: string) => `${LOYALTY_REWARD_PREFIX}${id}.json`;
+
+const SAFE_ID = /^[a-zA-Z0-9-]+$/;
+
+export async function getBarberMilestone(barberId: string): Promise<BarberMilestone | null> {
+  if (!SAFE_ID.test(barberId)) return null;
+  return getDoc<BarberMilestone>(loyaltyBarberPath(barberId));
+}
+
+export async function saveBarberMilestone(m: BarberMilestone): Promise<void> {
+  await putDoc(loyaltyBarberPath(m.barberId), m);
+}
+
+export async function listBarberMilestones(): Promise<BarberMilestone[]> {
+  const paths = await listDocs(LOYALTY_BARBER_PREFIX);
+  const out: BarberMilestone[] = [];
+  for (const p of paths) {
+    const r = await getDoc<BarberMilestone>(p);
+    if (r) out.push(r);
+  }
+  return out;
+}
+
+export async function getCustomerLoyalty(customerId: string): Promise<CustomerLoyalty | null> {
+  if (!SAFE_ID.test(customerId)) return null;
+  return getDoc<CustomerLoyalty>(loyaltyCustomerPath(customerId));
+}
+
+export async function saveCustomerLoyalty(l: CustomerLoyalty): Promise<void> {
+  await putDoc(loyaltyCustomerPath(l.customerId), l);
+}
+
+export async function getLoyaltyReward(id: string): Promise<LoyaltyReward | null> {
+  if (!SAFE_ID.test(id)) return null;
+  return getDoc<LoyaltyReward>(loyaltyRewardPath(id));
+}
+
+export async function saveLoyaltyReward(r: LoyaltyReward): Promise<void> {
+  await putDoc(loyaltyRewardPath(r.id), r);
+}
+
+export async function listLoyaltyRewards(): Promise<LoyaltyReward[]> {
+  const paths = await listDocs(LOYALTY_REWARD_PREFIX);
+  const out: LoyaltyReward[] = [];
+  for (const p of paths) {
+    const r = await getDoc<LoyaltyReward>(p);
+    if (r) out.push(r);
+  }
+  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return out;
 }

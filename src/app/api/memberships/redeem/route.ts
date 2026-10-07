@@ -145,6 +145,20 @@ export async function POST(req: Request) {
   // Single-use code: invalidate so it can't be scanned twice.
   await saveMembership({ ...membership, qrToken: null, qrTokenExpiry: null });
 
+  // Loyalty & barber milestones: count this completed plan haircut.
+  try {
+    const { recordHaircut } = await import('@/lib/loyalty');
+    const { sessionSalonId } = await import('@/lib/auth');
+    await recordHaircut({
+      barberId: session.barberId,
+      customerId: membership.customerId,
+      paid: true,
+      salonId: sessionSalonId(session),
+    });
+  } catch (e) {
+    console.error('[redeem] loyalty hook failed', e);
+  }
+
   // Plan haircut payout: the redeeming barber gets 25% of the plan price
   // immediately ($30 for the standard $120 plan). Total payouts can never
   // exceed what the customer paid for the plan.

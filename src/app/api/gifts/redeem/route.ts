@@ -112,6 +112,20 @@ export async function POST(req: Request) {
   }
   await saveGift(gift);
 
+  // Loyalty & barber milestones: count this completed gift haircut.
+  try {
+    const { recordHaircut } = await import('@/lib/loyalty');
+    const { sessionSalonId } = await import('@/lib/auth');
+    await recordHaircut({
+      barberId: session.barberId,
+      customerId: gift.claimedByCustomerId,
+      paid: true,
+      salonId: sessionSalonId(session),
+    });
+  } catch (e) {
+    console.error('[gifts/redeem] loyalty hook failed', e);
+  }
+
   // Ask the recipient to rate + tip (the haircut is done — photo taken).
   try {
     const { getBarbers, getCustomers } = await import('@/lib/store');

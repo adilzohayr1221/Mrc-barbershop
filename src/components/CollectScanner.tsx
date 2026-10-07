@@ -5,7 +5,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { ScanIcon, CheckSealIcon } from '@/components/Icons';
 
 interface Summary {
-  kind: 'payment' | 'membership' | 'gift' | 'comp';
+  kind: 'payment' | 'membership' | 'gift' | 'comp' | 'loyalty';
   customerName: string;
   token: string;
   // payment (MRC1)
@@ -26,6 +26,8 @@ interface Summary {
   recipientName?: string | null;
   // comp — free haircut granted by the owner for a complaint (MRC4)
   compId?: string;
+  // loyalty — free 5th haircut earned from the loyalty program (MRC5)
+  rewardId?: string;
 }
 
 type ParsedCode =
@@ -33,7 +35,8 @@ type ParsedCode =
   | { kind: 'membership'; membershipId: string; token: string }
   | { kind: 'gift'; giftId: string; token: string }
   | { kind: 'giftShort'; shortCode: string }
-  | { kind: 'comp'; compId: string; token: string };
+  | { kind: 'comp'; compId: string; token: string }
+  | { kind: 'loyalty'; rewardId: string; token: string };
 
 // How long to ignore the same failing code before allowing a retry —
 // stops the scanner hammering the API while one bad QR stays in view.
@@ -78,6 +81,7 @@ export function CollectScanner({
     if (parts[0] === 'MRC2') return { kind: 'membership', membershipId: parts[1], token: parts[2] };
     if (parts[0] === 'MRC3') return { kind: 'gift', giftId: parts[1], token: parts[2] };
     if (parts[0] === 'MRC4') return { kind: 'comp', compId: parts[1], token: parts[2] };
+    if (parts[0] === 'MRC5') return { kind: 'loyalty', rewardId: parts[1], token: parts[2] };
     return null;
   }
 
@@ -166,6 +170,24 @@ token: parsed.token,
           compId: parsed.compId,
           serviceName: pc.serviceName,
           price: pc.value,
+        });
+      } else if (parsed.kind === 'loyalty') {
+        const r = await fetch('/api/loyalty/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ rewardId: parsed.rewardId, token: parsed.token, preview: true }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        // Good read — now stop the camera and show the confirmation.
+        await stopCamera();
+        const pl = d.preview;
+        setSummary({
+          kind: 'loyalty',
+          customerName: pl.customerName || 'Customer',
+          token: parsed.token,
+          rewardId: parsed.rewardId,
+          serviceName: pl.serviceName,
         });
       } else if (parsed.kind === 'membership') {
         const r = await fetch('/api/memberships/redeem', {
@@ -323,6 +345,18 @@ token: parsed.token,
         onCollected();
         return;
       }
+      if (summary.kind === 'loyalty') {
+        const r = await fetch('/api/loyalty/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ rewardId: summary.rewardId, token: summary.token }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Could not redeem the free haircut.');
+        setPhase('done');
+        onCollected();
+        return;
+      }
       if (summary.kind === 'membership') {
         // Proof-of-completion photo required (like DoorDash): no photo = no payout.
         if (!photoFile) throw new Error('Take a photo of the finished haircut to get paid.');
@@ -464,7 +498,7 @@ token: parsed.token,
                       id="mrc-manual-code"
                       value={manual}
                       onChange={(e) => setManual(e.target.value)}
-                      placeholder="MRC1:… / MRC4:… / 6-letter gift code"
+                      placeholder="MRC1:… / MRC4:… / MRC5:… / 6-letter gift code"
                       autoCapitalize="off"
                       autoCorrect="off"
                       className="input flex-1 min-w-0 font-mono text-[16px]"
@@ -610,6 +644,32 @@ token: parsed.token,
                   </p>
                 </div>
                 <p className="text-[12px] text-neutral-500 text-center mt-2">Single use — granted by the owner. The customer pays nothing and there is no payout for this haircut.</p>
+                {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
+                <button
+                  onClick={() => void charge()}
+                  disabled={busy}
+                  className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
+                >
+                  {busy ? 'Redeeming…' : 'Redeem free haircut'}
+                </button>
+                <button
+                  onClick={scanDifferent}
+                  disabled={busy}
+                  className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
+                >
+                  Scan a different code
+                </button>
+              </>
+            )}
+
+            {phase === 'confirm' && summary && summary.kind === 'loyalty' && (
+              <>
+                <h3 className="font-extrabold text-[18px] text-center">🎉 Free haircut (loyalty)</h3>
+                <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border-2 border-gold/60 rounded-2xl p-4">
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Customer</span><b className="text-right">{summary.customerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Reward</span><b className="text-right">{summary.serviceName!}</b></p>
+                </div>
+                <p className="text-[12px] text-neutral-500 text-center mt-2">Single use — earned with 4 haircuts. The customer pays nothing and there is no payout for this haircut.</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
                   onClick={() => void charge()}

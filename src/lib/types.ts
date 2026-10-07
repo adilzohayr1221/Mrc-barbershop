@@ -418,3 +418,46 @@ export interface ShopOrder extends TenantScoped {
   cancelledAt?: string | null;
   createdAt: string; // ISO
 }
+
+// ---------- Loyalty & barber milestone bonuses ----------
+// Owner's retention program:
+// - Barber: $100 bonus at 10 completed haircuts, $500 at 100 (one-time each).
+//   The owner pays the bonus and marks it paid from the dashboard.
+// - Customer: 4 paid haircuts -> the 5th is FREE (one-time per customer).
+//   The free haircut is a single-use MRC5 QR the barber scans (no payout,
+//   like complaint comps); it still counts toward the barber's milestone.
+export type BonusState = 'none' | 'earned' | 'paid';
+
+export interface BarberMilestone extends TenantScoped {
+  id: string; // = barberId
+  barberId: string;
+  completedHaircuts: number; // every completed haircut in the app (paid or free)
+  bonus10: BonusState; // $100 at 10 haircuts
+  bonus100: BonusState; // $500 at 100 haircuts
+  bonus10EarnedAt?: string | null;
+  bonus10PaidAt?: string | null;
+  bonus100EarnedAt?: string | null;
+  bonus100PaidAt?: string | null;
+  updatedAt: string;
+}
+
+export interface CustomerLoyalty extends TenantScoped {
+  id: string; // = customerId
+  customerId: string;
+  paidHaircuts: number; // paid haircuts only (bookings, plan redemptions, gifts)
+  freeEarned: boolean; // 5th haircut FREE earned (one-time)
+  freeRewardId?: string | null;
+  freeRedeemedAt?: string | null;
+  updatedAt: string;
+}
+
+export interface LoyaltyReward extends TenantScoped {
+  id: string;
+  token: string; // QR payload: MRC5:<id>:<token>
+  customerId: string;
+  serviceName: string; // "Free haircut"
+  status: 'active' | 'redeemed';
+  createdAt: string;
+  redeemedAt?: string | null;
+  redeemedByBarberId?: string | null;
+}

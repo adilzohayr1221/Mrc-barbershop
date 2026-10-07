@@ -8,6 +8,7 @@ import { BranchPageSkeleton } from '@/components/Loading';
 import DirectionsButton from '@/components/DirectionsButton';
 import { useCustomerAuth } from '@/components/CustomerAuth';
 import ShopIllustration from '@/components/ShopIllustration';
+import LoyaltyCard from '@/components/LoyaltyCard';
 import type { Branch } from '@/lib/types';
 
 const BranchMap = dynamic(() => import('@/components/BranchMap'), { ssr: false });
@@ -113,6 +114,8 @@ export default function CustomerHome() {
           <p className="font-extrabold text-[17px] mt-1 text-white">Mix &amp; Match Weekly Plan</p>
           <p className="text-[13px] text-neutral-400 mt-0.5">Pick any 4 services in any order — save 25% every month <span className="text-gold font-bold">→</span></p>
         </Link>
+
+        <LoyaltyCard />
 
         {loading ? (
           <BranchPageSkeleton />

@@ -48,6 +48,21 @@ export async function POST(req: Request) {
   comp.redeemedAt = new Date().toISOString();
   comp.redeemedByBarberId = session.barberId;
   await saveComp(comp);
+
+  // Barber milestone: a comp haircut is still work done in the app.
+  // The customer loyalty counter does NOT move (the haircut was free).
+  try {
+    const { recordHaircut } = await import('@/lib/loyalty');
+    const { sessionSalonId } = await import('@/lib/auth');
+    await recordHaircut({
+      barberId: session.barberId,
+      customerId: comp.customerId,
+      paid: false,
+      salonId: sessionSalonId(session),
+    });
+  } catch (e) {
+    console.error('[comps/redeem] loyalty hook failed', e);
+  }
   return NextResponse.json({
     ok: true,
     comp: { serviceName: comp.serviceName, value: comp.value },

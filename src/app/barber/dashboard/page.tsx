@@ -14,6 +14,7 @@ import { ChatModal } from '@/components/ChatModal';
 import { TeamChatModal } from '@/components/TeamChatModal';
 import { BarberTasks } from '@/components/BarberTasks';
 import { Leaderboard } from '@/components/Leaderboard';
+import BonusCard from '@/components/BonusCard';
 import type { Booking, Review, WorkingHours, ShopProduct, ShopOrder } from '@/lib/types';
 
 interface ScheduleBooking extends Booking {
@@ -862,6 +863,10 @@ function SettingsModal({
             <span className="text-neutral-400 font-extrabold text-lg shrink-0">›</span>
           </div>
         </button>
+
+        <div className="mt-4">
+          <BonusCard token={getToken() ?? ''} />
+        </div>
 
         <div className="mt-4">
           <EnableNotifications getToken={() => getToken() ?? ''} />

@@ -11,10 +11,11 @@ import { DeleteBookingButton } from '@/components/DeleteBookingButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { TeamChatModal } from '@/components/TeamChatModal';
 import { TasksTab } from '@/components/TasksTab';
+import BonusesTab from '@/components/BonusesTab';
 import { Leaderboard } from '@/components/Leaderboard';
 import type { Barber, Service, Review, Branch, Booking, WorkingHours, Salon } from '@/lib/types';
 
-type Tab = 'bookings' | 'barbers' | 'leaderboard' | 'services' | 'reviews' | 'customers' | 'plans' | 'earnings' | 'photos' | 'complaints' | 'skills' | 'shop' | 'partners' | 'salons' | 'tasks';
+type Tab = 'bookings' | 'barbers' | 'leaderboard' | 'services' | 'reviews' | 'customers' | 'plans' | 'earnings' | 'photos' | 'complaints' | 'skills' | 'shop' | 'partners' | 'salons' | 'tasks' | 'bonuses';
 
 // Compact read-only summary of a barber's self-set working hours, e.g.
 // "Mon–Fri 9:00 AM–5:00 PM · Sat 10:00 AM–2:00 PM". Empty = never set.
@@ -191,6 +192,7 @@ export default function OwnerDashboard() {
     { id: 'bookings', label: 'Bookings' },
     { id: 'barbers', label: 'Barbers' },
     { id: 'leaderboard', label: '🏆 Leaderboard' },
+    { id: 'bonuses', label: '🎯 Bonuses' },
     { id: 'services', label: 'Services' },
     { id: 'reviews', label: 'Reviews' },
     { id: 'photos', label: 'Photos' },
@@ -264,6 +266,9 @@ export default function OwnerDashboard() {
                 apiBase="/api/owner/leaderboard"
                 getToken={() => localStorage.getItem('mrc_owner_token') || ''}
               />
+            )}
+            {tab === 'bonuses' && (
+              <BonusesTab getToken={() => localStorage.getItem('mrc_owner_token') || ''} />
             )}
             {tab === 'services' && <ServicesTab services={services} reload={load} />}
             {tab === 'reviews' && <ReviewsTab reviews={reviews} reload={load} />}
