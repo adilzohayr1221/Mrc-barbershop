@@ -177,18 +177,25 @@ export default function BarberProfileModal({
               </span>
             </div>
 
-            {/* Skills under the photo — verified ones get a ✓ badge */}
+            {/* Skills — each one its own big rounded badge, like "Good barber" */}
             {barber.skills.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-1.5 mt-4">
-                {barber.skills.map((s) => (
-                  <span
-                    key={s}
-                    className={`chip ${(barber.verifiedSkills ?? []).includes(s) ? '!border-green-600/50 !text-green-700 font-bold' : ''}`}
-                    title={(barber.verifiedSkills ?? []).includes(s) ? 'Verified by MRC' : undefined}
-                  >
-                    {(barber.verifiedSkills ?? []).includes(s) ? '✓ ' : ''}{s}
-                  </span>
-                ))}
+              <div className="flex flex-col items-center gap-2 mt-4">
+                {barber.skills.map((s) => {
+                  const verified = (barber.verifiedSkills ?? []).includes(s);
+                  return (
+                    <span
+                      key={s}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-5 py-2 text-[15px] font-bold ${
+                        verified
+                          ? 'border-green-600/50 text-green-700 bg-green-50'
+                          : 'border-[#d9c88f] text-[#7a5f14] bg-[#faf3df]'
+                      }`}
+                      title={verified ? 'Verified by MRC' : undefined}
+                    >
+                      {verified ? '✓ ' : ''}{s}
+                    </span>
+                  );
+                })}
               </div>
             )}
 
