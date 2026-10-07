@@ -50,11 +50,15 @@ workflows:
           echo "Export options created"
       - name: Build .ipa
         script: |
+          # Ensure the profile is installed (backup to fetch-signing-files)
+          mkdir -p ~/Library/MobileDevice/"Provisioning Profiles"
+          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/ 2>/dev/null || true
+          ls ~/Library/MobileDevice/"Provisioning Profiles"/
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
             --scheme App \
             --export-options-plist ~/export_options.plist \
-            --archive-flags "PROVISIONING_PROFILE=d4585252-7de1-476f-8373-80a9e71eedca CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
+            --archive-flags "CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
