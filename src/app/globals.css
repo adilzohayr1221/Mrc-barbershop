@@ -212,6 +212,8 @@ select.input option {
   background: #e8e3d5;
   z-index: 0;
   font: inherit;
+  border-radius: 1.5rem;
+  overflow: hidden;
 }
 @media (min-width: 640px) {
   .modern-map-leaflet {
