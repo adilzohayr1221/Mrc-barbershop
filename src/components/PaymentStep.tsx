@@ -1,11 +1,55 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { ArrowLeftIcon, LockIcon } from '@/components/Icons';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+
+// Apple Pay only works inside Safari on iPhone/iPad (Apple's restriction).
+// If an iPhone user opened this page in Chrome or an in-app browser
+// (Instagram, TikTok, WhatsApp…), Apple Pay can't appear — nudge them to Safari.
+function SafariNudge() {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      const isIOS =
+        /iPad|iPhone|iPod/.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isSafari =
+        /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|EdgiOS|OPiOS|Instagram|FBAN|FBAV|TikTok/.test(ua);
+      const applePayAvailable =
+        typeof (window as any).ApplePaySession !== 'undefined' &&
+        (window as any).ApplePaySession.canMakePayment();
+      if (isIOS && (!isSafari || !applePayAvailable)) setShow(true);
+    } catch { /* never block payment */ }
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="mb-4 rounded-2xl border border-gold/50 bg-gold/10 px-4 py-3 text-[13px] leading-relaxed">
+      <p>
+        <span className="font-bold">🍎 iPhone user?</span> Apple Pay only works in{' '}
+        <b>Safari</b>. You're not in Safari right now — open this page there to pay
+        with Apple Pay.
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          navigator.clipboard?.writeText(window.location.href).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }).catch(() => {});
+        }}
+        className="mt-2 underline underline-offset-2 font-semibold text-gold"
+      >
+        {copied ? 'Link copied ✓ — paste it in Safari' : 'Copy this page link'}
+      </button>
+    </div>
+  );
+}
 
 interface Summary {
   serviceName: string;
@@ -93,6 +137,7 @@ function PayForm({
           Payment <LockIcon size={14} className="text-gold" />
         </h2>
         <p className="text-[13px] text-neutral-500 mt-1 mb-4">Secure payment via Stripe.</p>
+        <SafariNudge />
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
 
