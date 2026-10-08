@@ -12,6 +12,7 @@ import PaymentStep from '@/components/PaymentStep';
 import { ChatModal } from '@/components/ChatModal';
 import { withSalon } from '../../salonQuery';
 import type { PublicBarber, Service, Review } from '@/lib/types';
+import { formatTime12h } from '@/lib/format';
 
 const TIMES = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'];
 
@@ -293,7 +294,7 @@ export default function BookPage() {
                 )}
               </p>
             )}
-            <p><span className="text-neutral-500 text-sm block">When</span><b>{fmtDate(done.date)} at {done.time}</b></p>
+            <p><span className="text-neutral-500 text-sm block">When</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
             <p><span className="text-neutral-500 text-sm block">Where</span><b>{done.branchAddress}</b></p>
           </div>
           <div className="flex flex-col gap-3 justify-center mt-7">
@@ -315,7 +316,7 @@ export default function BookPage() {
           <ChatModal
             bookingId={done.id}
             title={`Chat with ${done.barberName}`}
-            subtitle={`${fmtDate(done.date)} at ${done.time}`}
+            subtitle={`${fmtDate(done.date)} at ${formatTime12h(done.time)}`}
             me="customer"
             getToken={() => customerToken() ?? ''}
             onClose={() => setChatOpen(false)}
@@ -456,7 +457,7 @@ export default function BookPage() {
                           : 'border-[#dccfae] bg-[#f4edda] text-neutral-700'
                     }`}
                   >
-                    {t}
+                    {formatTime12h(t)}
                   </button>
                 );
               })}

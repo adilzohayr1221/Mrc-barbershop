@@ -8,6 +8,7 @@ import { BranchPageSkeleton } from '@/components/Loading';
 import { useCustomerAuth } from '@/components/CustomerAuth';
 import { CollectCodeButton } from '@/components/CollectCodeButton';
 import { ChatModal } from '@/components/ChatModal';
+import { formatTime12h } from '@/lib/format';
 import { ReportProblemButton } from '@/components/ReportProblemButton';
 
 interface MyBooking {
@@ -66,13 +67,13 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
         ) : planPending ? (
           <span className="chip !border-gold/60 !text-gold shrink-0">Monthly plan</span>
         ) : (
-          <span className="chip shrink-0">{fmtShort(b.date)} · {b.time}</span>
+          <span className="chip shrink-0">{fmtShort(b.date)} · {formatTime12h(b.time)}</span>
         )}
       </div>
       <div className={`text-sm mt-1.5 ${inactive ? 'text-neutral-400' : 'text-neutral-600'}`}>
         <span className="inline-flex items-center gap-1"><ScissorsIcon size={13} className="text-gold/70" /> {b.barberName}</span>
         {' · '}
-        <span className="inline-flex items-center gap-1"><ClockIcon size={13} className="text-gold/70" /> {fmtDate(b.date)} at {b.time}</span>
+        <span className="inline-flex items-center gap-1"><ClockIcon size={13} className="text-gold/70" /> {fmtDate(b.date)} at {formatTime12h(b.time)}</span>
       </div>
       <div className={`text-xs mt-1 flex items-center gap-1 ${inactive ? 'text-neutral-400' : 'text-neutral-500'}`}>
         <MapPinIcon size={12} className="text-gold/60 shrink-0" />
@@ -221,7 +222,7 @@ function MyAppointmentsInner() {
         <ChatModal
           bookingId={chatBooking.id}
           title={`Chat with ${chatBooking.barberName}`}
-          subtitle={`${fmtShort(chatBooking.date)} · ${chatBooking.time}`}
+          subtitle={`${fmtShort(chatBooking.date)} · ${formatTime12h(chatBooking.time)}`}
           me="customer"
           getToken={() => token ?? ''}
           onClose={() => {

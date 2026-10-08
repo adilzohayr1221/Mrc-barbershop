@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useCustomerAuth } from '@/components/CustomerAuth';
 import { ArrowLeftIcon, ShareIcon, PrintIcon, CheckSealIcon } from '@/components/Icons';
+import { formatTime12h } from '@/lib/format';
 
 interface ReceiptBooking {
   id: string;
@@ -101,7 +102,7 @@ export default function ReceiptPage() {
     const text =
       `${bookingData.salonName} — Receipt ${receiptNo}\n` +
       `${bookingData.serviceName} with ${bookingData.barberName}\n` +
-      `${fmtDate(bookingData.date)} at ${bookingData.time}\n` +
+      `${fmtDate(bookingData.date)} at ${formatTime12h(bookingData.time)}\n` +
       (viaPlan ? `Paid via monthly plan` : `Deposit paid: $${deposit.toFixed(2)}${remaining > 0.005 ? ` · Due at shop: $${remaining.toFixed(2)}` : ''}`);
     try {
       if (navigator.share) {
@@ -150,7 +151,7 @@ export default function ReceiptPage() {
             <div className="min-w-0">
               <b>{bookingData.serviceName}</b>
               <p className="text-neutral-500 text-[13px] mt-0.5">
-                with {bookingData.barberName} · {fmtDate(booking.date)} at {bookingData.time}
+                with {bookingData.barberName} · {fmtDate(booking.date)} at {formatTime12h(bookingData.time)}
               </p>
               <p className="text-neutral-500 text-[13px]">{bookingData.branchName}</p>
             </div>
