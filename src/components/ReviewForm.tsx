@@ -25,7 +25,7 @@ export default function ReviewForm({
   const active = hover || rating;
 
   async function submit() {
-    if (rating < 1 || text.trim().length < 2 || sending) return;
+    if (rating < 1 || sending) return;
     setSending(true);
     setError(null);
     try {
@@ -91,7 +91,7 @@ export default function ReviewForm({
         onChange={(e) => setText(e.target.value)}
         rows={3}
         maxLength={1000}
-        placeholder="How was your haircut?"
+        placeholder="How was your haircut? (optional)"
         className="input mt-2 w-full resize-none"
       />
       {error && <p className="text-sm text-red-600 mt-1.5">{error}</p>}
@@ -100,7 +100,7 @@ export default function ReviewForm({
         <button
           type="button"
           onClick={submit}
-          disabled={sending || rating < 1 || text.trim().length < 2}
+          disabled={sending || rating < 1}
           className="gold-btn rounded-xl px-4 py-2 text-sm disabled:opacity-40"
         >
           {sending ? 'Posting…' : 'Post review'}

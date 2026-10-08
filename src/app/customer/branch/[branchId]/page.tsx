@@ -178,7 +178,7 @@ export default function BranchBarbers() {
                       <span className="font-semibold text-sm">{r.customerName}</span>
                       <Stars rating={r.rating} />
                     </div>
-                    <p className="text-sm text-neutral-700 mt-1 leading-relaxed">{r.text}</p>
+                    <p className="text-sm text-neutral-700 mt-1 leading-relaxed">{r.text || '—'}</p>
                   </div>
                 ))}
                 <ReviewForm

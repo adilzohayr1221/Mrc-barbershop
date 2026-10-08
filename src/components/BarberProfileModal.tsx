@@ -233,7 +233,7 @@ export default function BarberProfileModal({
                       <span className="font-semibold text-sm truncate">{r.customerName}</span>
                       <Stars rating={r.rating} size={13} />
                     </div>
-                    <p className="text-sm text-neutral-700 mt-1 leading-relaxed">{r.text}</p>
+                    <p className="text-sm text-neutral-700 mt-1 leading-relaxed">{r.text || '—'}</p>
                   </div>
                 ))}
               </div>
