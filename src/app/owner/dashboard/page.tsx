@@ -150,7 +150,7 @@ export default function OwnerDashboard() {
       const [b, br, s, rv, brn, cu, pl, er] = await Promise.all([
         fetch('/api/owner/bookings', { headers: h }).then(j),
         fetch('/api/owner/barbers', { headers: h }).then(j),
-        fetch('/api/owner/services', { headers: h }).then(j),
+        fetch('/api/owner/services', { headers: h, cache: 'no-store' }).then(j),
         fetch('/api/owner/reviews', { headers: h }).then(j),
         fetch('/api/branches').then((r) => r.json()),
         fetch('/api/owner/customers', { headers: h }).then(j),
@@ -270,7 +270,7 @@ export default function OwnerDashboard() {
             {tab === 'bonuses' && (
               <BonusesTab getToken={() => localStorage.getItem('mrc_owner_token') || ''} />
             )}
-            {tab === 'services' && <ServicesTab services={services} reload={load} />}
+            {tab === 'services' && <ServicesTab services={services} setServices={setServices} reload={load} />}
             {tab === 'reviews' && <ReviewsTab reviews={reviews} reload={load} />}
             {tab === 'photos' && <PhotosTab />}
             {tab === 'complaints' && <ComplaintsTab />}
@@ -822,7 +822,7 @@ function BarbersTab({ barbers, branches, reload }: { barbers: BarberAdmin[]; bra
 }
 
 /* ---------------- Services ---------------- */
-function ServicesTab({ services, reload }: { services: Service[]; reload: () => void }) {
+function ServicesTab({ services, setServices, reload }: { services: Service[]; setServices: React.Dispatch<React.SetStateAction<Service[]>>; reload: () => void }) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [duration, setDuration] = useState('30');
@@ -838,7 +838,14 @@ function ServicesTab({ services, reload }: { services: Service[]; reload: () => 
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name.trim(), price: p, durationMin: Number(duration) }),
     });
-    if (r.ok) { setName(''); setPrice(''); setDuration('30'); reload(); }
+    if (r.ok) {
+      const d = await r.json().catch(() => null);
+      // Optimistic update: show the new service immediately instead of
+      // relying on a re-fetch that can return stale data.
+      if (d?.service) setServices((prev) => [...prev, d.service]);
+      else reload();
+      setName(''); setPrice(''); setDuration('30');
+    }
     else {
       const d = await r.json().catch(() => ({}));
       setErr(d.error || 'Could not add the service. Please try again.');
