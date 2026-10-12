@@ -67,12 +67,12 @@ function buildPassJson(f: PassFields): object {
       {
         latitude: 39.28954,
         longitude: -76.5933,
-        relevantText: 'You\u2019re near MRC Barbershop \u2702\uFE0F \u2014 come in for a fresh cut!',
+        relevantText: 'MRC Barbershop is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
       },
       {
         latitude: 39.28052,
         longitude: -76.57518,
-        relevantText: 'You\u2019re near MRC Barbershop \u2702\uFE0F \u2014 come in for a fresh cut!',
+        relevantText: 'MRC Barbershop is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
       },
     ],
   };
