@@ -23,9 +23,9 @@ export async function GET(req: Request) {
   return NextResponse.json({ barbers: barbers.map(safeBarber) });
 }
 
-// Salon-owner: add a barber to HIS salon. The barber sets his own password
-// later via the existing barber-signup flow — here only name (+ optional
-// email/skills/branches) is stored.
+// Salon-owner: add a barber to HIS salon. The barber is created as PENDING —
+// the platform owner must approve before the barber goes live. The barber
+// sets his own password later via the existing barber-signup flow.
 export async function POST(req: Request) {
   const session = requireSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -33,11 +33,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const name = String(body?.name ?? '').trim();
   const emailRaw = String(body?.email ?? '').trim().toLowerCase();
+  const phone = String(body?.phone ?? '').trim();
   const skills = Array.isArray(body?.skills) ? body.skills.map(String).map((s: string) => s.trim()).filter(Boolean).slice(0, 20) : [];
   const branchIds = Array.isArray(body?.branchIds) ? body.branchIds.map(String) : [];
 
   if (name.length < 2 || name.length > 60) {
     return NextResponse.json({ error: 'Enter a valid name (2–60 characters).' }, { status: 400 });
+  }
+  if (!phone) {
+    return NextResponse.json({ error: 'Phone number is required.' }, { status: 400 });
   }
   if (emailRaw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
     return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
@@ -65,7 +69,8 @@ export async function POST(req: Request) {
     id: newId(),
     name,
     email: emailRaw || undefined,
-    approved: true,
+    phone: phone || undefined,
+    approved: false,
     active: true,
     skills,
     branchIds,

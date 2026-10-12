@@ -3,6 +3,7 @@ import {
   listSalons, getSalon, saveSalon,
   getSalonOwnerBySalon, saveSalonOwner,
   getBarbers, listBookings, inSalon,
+  getBranches, saveBranches, newId,
 } from '@/lib/store';
 import { requireOwner } from '@/lib/auth';
 
@@ -64,6 +65,25 @@ export async function POST(req: Request) {
     if (owner) {
       owner.active = true;
       await saveSalonOwner(owner);
+    }
+    // One shop per salon owner: auto-create their single branch from the
+    // salon's registered address. Salon owners cannot add branches themselves.
+    try {
+      const existing = (await getBranches()).filter((b) => inSalon(b, salon.id));
+      if (existing.length === 0) {
+        const branches = await getBranches();
+        branches.push({
+          id: newId(),
+          name: salon.name,
+          address: salon.address || salon.city || '',
+          lat: salon.lat ?? 0,
+          lng: salon.lng ?? 0,
+          salonId: salon.id,
+        });
+        await saveBranches(branches);
+      }
+    } catch (e) {
+      console.error('auto-branch creation failed for salon', salon.id, e);
     }
   } else if (action === 'suspend') {
     if (salon.status !== 'active') {

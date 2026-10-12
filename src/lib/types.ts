@@ -82,6 +82,7 @@ export interface Barber extends TenantScoped {
   createdAt: string;
   // Barber self-signup (optional): barbers who create their own account with email.
   email?: string;
+  phone?: string; // barber's phone number (added by salon owner or at signup)
   passwordHash?: string; // scrypt hash, same helper as customer passwords
   approved?: boolean; // missing = approved (all owner-created barbers keep working)
   // Working hours set by the barber himself; missing = default shop slots.

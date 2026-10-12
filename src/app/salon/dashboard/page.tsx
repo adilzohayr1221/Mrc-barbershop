@@ -9,7 +9,7 @@ import { TasksTab } from '@/components/TasksTab';
 import { Leaderboard } from '@/components/Leaderboard';
 import type { Barber, Service, Review, Branch, Booking, Salon } from '@/lib/types';
 
-type Tab = 'appointments' | 'barbers' | 'leaderboard' | 'earnings' | 'services' | 'reviews' | 'branches' | 'tasks';
+type Tab = 'appointments' | 'barbers' | 'leaderboard' | 'earnings' | 'services' | 'reviews' | 'tasks';
 
 interface FullBooking extends Booking {
   barberName: string;
@@ -112,7 +112,6 @@ export default function SalonDashboard() {
     { id: 'earnings', label: '💰 Earnings' },
     { id: 'services', label: '✂️ Services' },
     { id: 'reviews', label: '⭐ Reviews' },
-    { id: 'branches', label: '🏢 Branches' },
     { id: 'tasks', label: '✅ Tasks' },
   ];
 
@@ -162,7 +161,6 @@ export default function SalonDashboard() {
             {tab === 'earnings' && <EarningsTab data={earnings} />}
             {tab === 'services' && <ServicesTab services={services} reload={load} />}
             {tab === 'reviews' && <ReviewsTab reviews={reviews} />}
-            {tab === 'branches' && <BranchesTab branches={branches} reload={load} />}
             {tab === 'tasks' && (
               <TasksTab
                 getToken={() => localStorage.getItem('mrc-salon-owner-token') || ''}
@@ -235,6 +233,7 @@ function BarbersTab({ barbers, branches, reload }: { barbers: Barber[]; branches
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [skills, setSkills] = useState('');
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -243,30 +242,30 @@ function BarbersTab({ barbers, branches, reload }: { barbers: Barber[]; branches
   const [confirmBarber, setConfirmBarber] = useState<Barber | null>(null);
   const [actBusy, setActBusy] = useState(false);
 
-  function toggleBranchId(id: string) {
-    setBranchIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  }
-
   async function addBarber() {
     setErr('');
     if (name.trim().length < 2) { setErr('Enter the barber’s name (at least 2 letters).'); return; }
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErr('Enter a valid email address (or leave it empty).'); return; }
+    if (!phone.trim()) { setErr('Enter the barber’s phone number.'); return; }
     setBusy(true);
     try {
+      // One shop per salon owner: auto-assign the salon's single branch.
+      const singleBranchIds = branches.length > 0 ? [branches[0].id] : [];
       const r = await fetch('/api/salon/barbers', {
         method: 'POST',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim() || undefined,
+          phone: phone.trim(),
           skills: skills.split(',').map((s) => s.trim()).filter(Boolean),
-          branchIds,
+          branchIds: singleBranchIds,
         }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || 'Could not add the barber. Please try again.');
-      setName(''); setEmail(''); setSkills(''); setBranchIds([]); setShowAdd(false);
-      setNotice('Barber added.');
+      setName(''); setEmail(''); setPhone(''); setSkills(''); setShowAdd(false);
+      setNotice('Barber submitted for approval.');
       reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not add the barber. Please try again.');
@@ -313,23 +312,12 @@ function BarbersTab({ barbers, branches, reload }: { barbers: Barber[]; branches
             <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" inputMode="email" type="email" autoComplete="email" />
           </div>
           <div>
-            <label className="label">Skills (optional, comma-separated)</label>
-            <input className="input" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Fade, Beard trim" />
+            <label className="label">Phone number</label>
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(410) 555-0100" inputMode="tel" autoComplete="tel" />
           </div>
           <div>
-            <label className="label">Branches</label>
-            {branches.length === 0 ? (
-              <p className="text-sm text-neutral-500">Add a branch first (🏢 Branches tab).</p>
-            ) : (
-              <div className="grid gap-2">
-                {branches.map((br) => (
-                  <label key={br.id} className="flex items-center gap-2.5 text-sm font-medium cursor-pointer">
-                    <input type="checkbox" checked={branchIds.includes(br.id)} onChange={() => toggleBranchId(br.id)} className="w-5 h-5 accent-[#b98a1d]" />
-                    {br.name}
-                  </label>
-                ))}
-              </div>
-            )}
+            <label className="label">Skills (optional, comma-separated)</label>
+            <input className="input" value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Fade, Beard trim" />
           </div>
           {err && (
             <p className="text-sm font-semibold text-red-700 bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-2.5">{err}</p>
@@ -580,130 +568,4 @@ function ReviewsTab({ reviews }: { reviews: SalonReview[] }) {
 }
 
 /* ---------------- Branches ---------------- */
-function BranchesTab({ branches, reload }: { branches: Branch[]; reload: () => void }) {
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<Branch | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editBusy, setEditBusy] = useState(false);
 
-  async function add() {
-    setErr('');
-    if (name.trim().length < 2) { setErr('Enter a branch name (at least 2 letters).'); return; }
-    if (address.trim().length < 4) { setErr('Enter the branch address.'); return; }
-    setBusy(true);
-    try {
-      const r = await fetch('/api/salon/branches', {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), address: address.trim() }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || 'Could not add the branch. Please try again.');
-      setName(''); setAddress('');
-      reload();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Could not add the branch. Please try again.');
-    }
-    setBusy(false);
-  }
-
-  async function saveEdit() {
-    if (!editing) return;
-    if (editName.trim().length < 2 || editAddress.trim().length < 4) return;
-    setEditBusy(true);
-    try {
-      const r = await fetch(`/api/salon/branches/${editing.id}`, {
-        method: 'PUT',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), address: editAddress.trim() }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || 'Could not update the branch. Please try again.');
-      setEditing(null);
-      reload();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Could not update the branch. Please try again.');
-    }
-    setEditBusy(false);
-  }
-
-  async function remove(id: string) {
-    if (!confirm('Delete this branch?')) return;
-    await fetch(`/api/salon/branches/${id}`, { method: 'DELETE', headers: authHeaders() });
-    reload();
-  }
-
-  return (
-    <div>
-      <div className="card p-5 grid gap-4 mb-4">
-        <div>
-          <label className="label">Branch name</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Downtown branch" />
-        </div>
-        <div>
-          <label className="label">Address</label>
-          <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main St" />
-        </div>
-        <button onClick={add} disabled={busy} className="gold-btn rounded-2xl px-4 py-3 text-[15px] inline-flex items-center justify-center gap-2">
-          <PlusIcon size={18} /> {busy ? 'Adding…' : 'Add branch'}
-        </button>
-        {err && (
-          <p className="text-sm font-semibold text-red-700 bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-2.5">{err}</p>
-        )}
-      </div>
-
-      <div className="grid gap-2.5">
-        {branches.map((b) =>
-          editing && editing.id === b.id ? (
-            <div key={b.id} className="card p-5 grid gap-4">
-              <div>
-                <label className="label">Branch name</label>
-                <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Address</label>
-                <input className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={saveEdit} disabled={editBusy} className="gold-btn rounded-xl px-4 py-2.5 text-sm flex-1">
-                  {editBusy ? 'Saving…' : 'Save'}
-                </button>
-                <button onClick={() => setEditing(null)} className="text-sm text-neutral-600 underline underline-offset-2 px-2">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <div key={b.id} className="card p-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <b className="text-[15px]">{b.name}</b>
-                <div className="text-sm text-neutral-600 mt-0.5 truncate">{b.address}</div>
-              </div>
-              <div className="flex gap-4 text-sm shrink-0">
-                <button
-                  onClick={() => { setEditing(b); setEditName(b.name); setEditAddress(b.address); }}
-                  className="inline-flex items-center gap-1 text-gold underline underline-offset-2"
-                >
-                  <PencilIcon size={14} /> Edit
-                </button>
-                <button onClick={() => remove(b.id)} className="inline-flex items-center gap-1 text-red-700/90 underline underline-offset-2">
-                  <TrashIcon size={14} /> Delete
-                </button>
-              </div>
-            </div>
-          )
-        )}
-        {branches.length === 0 && (
-          <div className="card p-10 text-center fade-in">
-            <p className="font-bold text-[16px]">No branches yet</p>
-            <p className="text-sm text-neutral-600 mt-1.5 leading-relaxed max-w-xs mx-auto">
-              Add your first branch above — barbers and customers pick from it.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}

@@ -425,7 +425,7 @@ function BarbersTab({ barbers, branches, reload }: { barbers: BarberAdmin[]; bra
   const [resetBarberFor, setResetBarberFor] = useState<BarberAdmin | null>(null);
   // Salon assignment at approval: the barber no longer picks a salon at signup —
   // the platform owner picks it here. 'mrc' = my own shops.
-  const [salonOptions, setSalonOptions] = useState<{ id: string; name: string }[]>([]);
+  const [salonOptions, setSalonOptions] = useState<{ id: string; name: string; address?: string; city?: string }[]>([]);
   const [approveSalon, setApproveSalon] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -434,7 +434,7 @@ function BarbersTab({ barbers, branches, reload }: { barbers: BarberAdmin[]; bra
       .then((d) => {
         const list = (d?.salons || [])
           .filter((e: { salon: { status: string } }) => e.salon.status === 'active')
-          .map((e: { salon: { id: string; name: string } }) => ({ id: e.salon.id, name: e.salon.name }));
+          .map((e: { salon: { id: string; name: string; address?: string; city?: string } }) => ({ id: e.salon.id, name: e.salon.name, address: e.salon.address, city: e.salon.city }));
         setSalonOptions(list);
       })
       .catch(() => {});
@@ -605,6 +605,15 @@ function BarbersTab({ barbers, branches, reload }: { barbers: BarberAdmin[]; bra
                   <div className="flex-1 min-w-0">
                     <b className="text-[15px]">{b.name}</b>
                     <div className="text-xs text-neutral-500 truncate">{b.email}</div>
+                    {b.phone && <div className="text-xs text-neutral-500">📞 {b.phone}</div>}
+                    {(() => {
+                      const s = salonOptions.find((x) => x.id === (b.salonId || 'mrc'));
+                      return s ? (
+                        <div className="text-[11px] text-gold font-semibold mt-1">
+                          💈 {s.name}{s.address ? ` — ${s.address}` : ''}{s.city ? `, ${s.city}` : ''}
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="text-[11px] text-neutral-400 mt-0.5">
                       Requested {new Date(b.createdAt).toLocaleDateString()}
                     </div>
