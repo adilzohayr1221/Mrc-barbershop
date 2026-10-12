@@ -62,6 +62,19 @@ function buildPassJson(f: PassFields): object {
         messageEncoding: 'iso-8859-1',
       },
     ],
+    // Lock-screen notification when the customer walks near either shop
+    locations: [
+      {
+        latitude: 39.28954,
+        longitude: -76.5933,
+        relevantText: 'You\u2019re near MRC Barbershop \u2702\uFE0F \u2014 come in for a fresh cut!',
+      },
+      {
+        latitude: 39.28052,
+        longitude: -76.57518,
+        relevantText: 'You\u2019re near MRC Barbershop \u2702\uFE0F \u2014 come in for a fresh cut!',
+      },
+    ],
   };
 }
 
