@@ -8,6 +8,8 @@ import { BranchPageSkeleton } from '@/components/Loading';
 import { useCustomerAuth, clearCustomerSession } from '@/components/CustomerAuth';
 import { EnableNotifications } from '@/components/EnableNotifications';
 import { MyReportsSection } from '@/components/MyReportsSection';
+import { useLang } from '@/components/LanguageContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 interface FavoriteBarber {
   id: string;
@@ -27,6 +29,7 @@ interface Profile {
 
 export default function CustomerProfile() {
   const { checked, token } = useCustomerAuth();
+  const { t } = useLang();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +58,9 @@ export default function CustomerProfile() {
 
   return (
     <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full">
-      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> Branches</Link>
-      <h1 className="page-title mt-3 mb-1"><span className="gold-text">Profile</span></h1>
-      <p className="page-sub mb-6">Your photo, name and settings.</p>
+      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> {t('profile.backToBranches')}</Link>
+      <h1 className="page-title mt-3 mb-1"><span className="gold-text">{t('profile.title')}</span></h1>
+      <p className="page-sub mb-6">{t('profile.sub')}</p>
 
       <div className="grid gap-6 fade-in">
         {profile && (
@@ -70,7 +73,7 @@ export default function CustomerProfile() {
 
         {profile && (
           <section>
-            <h2 className="label !mb-2.5">Favorite barber</h2>
+            <h2 className="label !mb-2.5">{t('profile.favoriteBarber')}</h2>
             {profile.favoriteBarber ? (
               <Link
                 href={`/customer/book/${profile.favoriteBarber.id}${profile.favoriteBarber.branchIds[0] ? `?branchId=${profile.favoriteBarber.branchIds[0]}` : ''}`}
@@ -89,7 +92,7 @@ export default function CustomerProfile() {
                 )}
                 <span className="flex-1 min-w-0">
                   <b className="text-[15px] block truncate">{profile.favoriteBarber.name}</b>
-                  <span className="text-xs text-neutral-500">Tap to book with {profile.favoriteBarber.name.split(' ')[0]}</span>
+                  <span className="text-xs text-neutral-500">{t('profile.tapToBook').replace('{name}', profile.favoriteBarber.name.split(' ')[0])}</span>
                 </span>
                 <StarIcon size={20} className="text-gold shrink-0" filled />
                 <span className="text-gold font-extrabold text-lg shrink-0">›</span>
@@ -100,8 +103,8 @@ export default function CustomerProfile() {
                   <StarIcon size={20} />
                 </span>
                 <span className="flex-1">
-                  <b className="text-[15px] block">No favorite yet</b>
-                  <span className="text-xs text-neutral-500">Tap the ⭐ on a barber&apos;s profile to pick your favorite</span>
+                  <b className="text-[15px] block">{t('profile.noFavorite')}</b>
+                  <span className="text-xs text-neutral-500">{t('profile.tapStar')}</span>
                 </span>
               </div>
             )}
@@ -109,6 +112,8 @@ export default function CustomerProfile() {
         )}
 
         <EnableNotifications getToken={() => token ?? ''} />
+        <LanguageSwitcher />
+        <DiscountCard token={token} />
         <MyReportsSection token={token} />
         <a
           href="tel:+14437415820"
@@ -118,9 +123,9 @@ export default function CustomerProfile() {
             <PhoneIcon size={18} />
           </span>
           <span className="flex-1 min-w-0">
-            <b className="text-[15px] block">Need help?</b>
+            <b className="text-[15px] block">{t('profile.needHelp')}</b>
             <span className="text-xs text-neutral-500 leading-relaxed block">
-              If you have any problem, call us at <b className="text-gold text-[14px]">(443) 741-5820</b>
+              {t('profile.callUs')} <b className="text-gold text-[14px]">(443) 741-5820</b>
             </span>
           </span>
         </a>
@@ -133,8 +138,8 @@ export default function CustomerProfile() {
             <LogOutIcon size={18} />
           </span>
           <span className="flex-1">
-            <b className="text-[15px] block text-red-700">Log out</b>
-            <span className="text-xs text-neutral-500">Sign out of your account on this device</span>
+            <b className="text-[15px] block text-red-700">{t('profile.logOut')}</b>
+            <span className="text-xs text-neutral-500">{t('profile.signOutDesc')}</span>
           </span>
         </button>
       </div>
@@ -143,6 +148,7 @@ export default function CustomerProfile() {
 }
 
 function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: string; onUpdate: (p: Partial<Profile>) => void }) {
+  const { t } = useLang();
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(profile.name);
   const [savingName, setSavingName] = useState(false);
@@ -152,7 +158,7 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
 
   async function saveName() {
     const n = name.trim();
-    if (n.length < 2) { setError('Name is too short.'); return; }
+    if (n.length < 2) { setError(t('profile.nameTooShort')); return; }
     setSavingName(true);
     setError('');
     try {
@@ -162,11 +168,11 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
         body: JSON.stringify({ name: n }),
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Could not save.');
+      if (!r.ok) throw new Error(d?.error || t('profile.couldNotSave'));
       onUpdate({ name: n });
       setEditingName(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save.');
+      setError(e instanceof Error ? e.message : t('profile.couldNotSave'));
     } finally {
       setSavingName(false);
     }
@@ -184,10 +190,10 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
         body: form,
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Could not upload.');
+      if (!r.ok) throw new Error(d?.error || t('profile.couldNotUpload'));
       onUpdate({ photoUrl: d.photoUrl });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not upload.');
+      setError(e instanceof Error ? e.message : t('profile.couldNotUpload'));
     } finally {
       setUploading(false);
     }
@@ -199,8 +205,8 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
         <button
           onClick={() => fileRef.current?.click()}
           className="relative shrink-0 group"
-          aria-label="Change profile photo"
-          title="Change photo"
+          aria-label={t('profile.changeProfilePhoto')}
+          title={t('profile.changePhoto')}
         >
           {profile.photoUrl ? (
             <img
@@ -244,7 +250,7 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
                 disabled={savingName}
                 className="gold-btn rounded-xl px-3 py-2 text-sm shrink-0"
               >
-                {savingName ? '…' : 'Save'}
+                {savingName ? '…' : t('profile.save')}
               </button>
             </div>
           ) : (
@@ -253,14 +259,14 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
               <button
                 onClick={() => { setName(profile.name); setEditingName(true); setError(''); }}
                 className="text-gold/70 hover:text-gold shrink-0"
-                aria-label="Edit name"
+                aria-label={t('profile.editName')}
               >
                 <PencilIcon size={15} />
               </button>
             </div>
           )}
           <p className="text-xs text-neutral-500 truncate mt-0.5">{profile.email}</p>
-          <p className="text-[11px] text-neutral-400 mt-1">Your photo and name are visible to your barber.</p>
+          <p className="text-[11px] text-neutral-400 mt-1">{t('profile.photoVisible')}</p>
         </div>
       </div>
       {error && <p className="text-red-700 text-sm mt-3">{error}</p>}
@@ -268,7 +274,126 @@ function ProfileCard({ profile, token, onUpdate }: { profile: Profile; token: st
   );
 }
 
+interface DiscountInfo {
+  type: 'student' | 'military';
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+function DiscountCard({ token }: { token: string | null }) {
+  const { t } = useLang();
+  const [discount, setDiscount] = useState<DiscountInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [type, setType] = useState<'student' | 'military'>('student');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const load = () => {
+    fetch('/api/customer/discount', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if ('discount' in d) setDiscount(d.discount); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  async function submit(file: File) {
+    setSubmitting(true);
+    setError('');
+    try {
+      const form = new FormData();
+      form.append('type', type);
+      form.append('photo', file);
+      const r = await fetch('/api/customer/discount', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(d?.error || t('profile.couldNotSubmit'));
+      setDiscount({ type, status: 'pending' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('profile.couldNotSubmit'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="card p-5">
+      <div className="flex items-center gap-3">
+        <span className="rounded-full w-10 h-10 bg-gold/10 border border-gold/40 flex items-center justify-center text-gold text-lg shrink-0">
+          🎓
+        </span>
+        <div className="flex-1">
+          <b className="text-[15px] block">{t('profile.discountTitle')}</b>
+          <span className="text-xs text-neutral-500">{t('profile.discountSub')}</span>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-neutral-500 mt-4">{t('profile.loading')}</p>
+      ) : discount?.status === 'approved' ? (
+        <p className="mt-4 text-sm font-bold text-green-800 bg-green-600/10 border border-green-600/25 rounded-xl px-4 py-3">
+          ✓ {t('profile.discountActive').replace('{type}', discount.type === 'student' ? t('profile.student') : t('profile.military'))}
+        </p>
+      ) : discount?.status === 'pending' ? (
+        <p className="mt-4 text-sm font-bold text-gold bg-gold/10 border border-gold/30 rounded-xl px-4 py-3">
+          ⏳ {t('profile.underReview')}
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-3">
+          {discount?.status === 'rejected' && (
+            <p className="text-sm text-red-700 bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-3">
+              {t('profile.notApproved')}
+            </p>
+          )}
+          <p className="text-[13px] text-neutral-600 leading-relaxed">
+            {t('profile.discountPitch')}
+          </p>
+          <div className="flex gap-2">
+            {(['student', 'military'] as const).map((kind) => (
+              <button
+                key={kind}
+                onClick={() => setType(kind)}
+                className={`flex-1 rounded-xl px-4 py-3 text-[13px] font-extrabold border transition-all ${
+                  type === kind
+                    ? 'bg-[#1c1a15] text-white border-[#1c1a15]'
+                    : 'bg-[#f4edda] border-[#dccfae] text-neutral-700'
+                }`}
+              >
+                {kind === 'student' ? t('profile.studentBtn') : t('profile.militaryBtn')}
+              </button>
+            ))}
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) submit(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={submitting}
+            className="gold-btn rounded-2xl py-3 font-bold"
+          >
+            {submitting ? t('profile.uploading') : t('profile.takeIdPhoto')}
+          </button>
+          {error && <p className="text-red-700 text-sm">{error}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ChangePasswordSection({ token }: { token: string | null }) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -281,11 +406,11 @@ function ChangePasswordSection({ token }: { token: string | null }) {
     setError('');
     setSuccess('');
     if (next.length < 6) {
-      setError('New password must be at least 6 characters.');
+      setError(t('profile.passwordTooShort'));
       return;
     }
     if (next !== confirm) {
-      setError('New passwords do not match.');
+      setError(t('profile.passwordsNoMatch'));
       return;
     }
     setBusy(true);
@@ -296,11 +421,11 @@ function ChangePasswordSection({ token }: { token: string | null }) {
         body: JSON.stringify({ currentPassword: current, newPassword: next }),
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Could not change password.');
-      setSuccess('Password changed successfully.');
+      if (!r.ok) throw new Error(d?.error || t('profile.couldNotChangePassword'));
+      setSuccess(t('profile.passwordChanged'));
       setCurrent(''); setNext(''); setConfirm('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not change password.');
+      setError(e instanceof Error ? e.message : t('profile.couldNotChangePassword'));
     } finally {
       setBusy(false);
     }
@@ -316,8 +441,8 @@ function ChangePasswordSection({ token }: { token: string | null }) {
           <LockIcon size={18} />
         </span>
         <span className="flex-1">
-          <b className="text-[15px] block">Change password</b>
-          <span className="text-xs text-neutral-500">Update the password for your account</span>
+          <b className="text-[15px] block">{t('profile.changePassword')}</b>
+          <span className="text-xs text-neutral-500">{t('profile.updatePasswordDesc')}</span>
         </span>
         <span className={`text-gold transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
@@ -325,35 +450,35 @@ function ChangePasswordSection({ token }: { token: string | null }) {
       {open && (
         <div className="card p-5 mt-2.5 grid gap-4 fade-in">
           <div>
-            <label className="label">Current password</label>
+            <label className="label">{t('profile.currentPassword')}</label>
             <input
               className="input"
               type="password"
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
-              placeholder="Your current password"
+              placeholder={t('profile.currentPasswordPh')}
               autoComplete="current-password"
             />
           </div>
           <div>
-            <label className="label">New password</label>
+            <label className="label">{t('profile.newPassword')}</label>
             <input
               className="input"
               type="password"
               value={next}
               onChange={(e) => setNext(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder={t('profile.newPasswordPh')}
               autoComplete="new-password"
             />
           </div>
           <div>
-            <label className="label">Confirm new password</label>
+            <label className="label">{t('profile.confirmNewPassword')}</label>
             <input
               className="input"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Repeat the new password"
+              placeholder={t('profile.confirmNewPasswordPh')}
               autoComplete="new-password"
               onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
             />
@@ -361,7 +486,7 @@ function ChangePasswordSection({ token }: { token: string | null }) {
           {error && <p className="text-red-700 text-sm bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-3">{error}</p>}
           {success && <p className="text-green-800 text-sm bg-green-600/10 border border-green-600/25 rounded-xl px-4 py-3 font-semibold inline-flex items-center gap-2"><CheckIcon size={16} /> {success}</p>}
           <button onClick={submit} disabled={busy} className="gold-btn rounded-2xl py-3 font-bold">
-            {busy ? 'Saving…' : 'Save new password'}
+            {busy ? t('profile.saving') : t('profile.saveNewPassword')}
           </button>
         </div>
       )}

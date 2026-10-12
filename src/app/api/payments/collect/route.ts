@@ -55,7 +55,10 @@ export async function POST(req: Request) {
   const service = services.find((s) => s.id === booking.serviceId);
   if (!service) return NextResponse.json({ error: 'Service not found.' }, { status: 404 });
 
-  const remaining = remainingFor(service.price, booking.amountPaid);
+  // The remaining balance is computed from the price agreed at booking time
+  // (discounted for approved student/military customers).
+  const totalPrice = booking.servicePrice ?? service.price;
+  const remaining = remainingFor(totalPrice, booking.amountPaid);
   if (remaining <= 0) {
     return NextResponse.json({ error: 'Nothing left to pay.' }, { status: 409 });
   }
@@ -73,7 +76,7 @@ export async function POST(req: Request) {
     time: booking.time,
     amount: remaining,
     depositPaid: booking.amountPaid ?? 0,
-    price: service.price,
+    price: totalPrice,
   };
   if (preview) {
     return NextResponse.json({ ok: true, preview: true, ...summary });

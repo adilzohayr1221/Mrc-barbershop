@@ -15,6 +15,8 @@ import { TeamChatModal } from '@/components/TeamChatModal';
 import { BarberTasks } from '@/components/BarberTasks';
 import { Leaderboard } from '@/components/Leaderboard';
 import BonusCard from '@/components/BonusCard';
+import { useLang } from '@/components/LanguageContext';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import type { Booking, Review, WorkingHours, ShopProduct, ShopOrder } from '@/lib/types';
 
 interface ScheduleBooking extends Booking {
@@ -81,19 +83,20 @@ function remainingOf(b: ScheduleBooking): number | null {
 }
 
 function PayState({ b }: { b: ScheduleBooking }) {
+  const { t } = useLang();
   if (b.status !== 'booked') return null;
   if (b.paymentStatus === 'membership_redeemed') {
-    return <span className="inline-block mt-1.5 text-[12px] font-bold text-green-700 bg-green-600/10 border border-green-600/25 rounded-full px-2.5 py-1">Paid via plan</span>;
+    return <span className="inline-block mt-1.5 text-[12px] font-bold text-green-700 bg-green-600/10 border border-green-600/25 rounded-full px-2.5 py-1">{t('barber.pay.paid_via_plan')}</span>;
   }
   if (b.paymentStatus === 'membership_pending') {
-    return <span className="inline-block mt-1.5 text-[12px] font-bold text-gold bg-gold/10 border border-gold/30 rounded-full px-2.5 py-1">Monthly plan — scan code</span>;
+    return <span className="inline-block mt-1.5 text-[12px] font-bold text-gold bg-gold/10 border border-gold/30 rounded-full px-2.5 py-1">{t('barber.pay.plan_scan')}</span>;
   }
   const remaining = remainingOf(b);
   if (b.paymentStatus === 'paid_in_full' || remaining === 0) {
-    return <span className="inline-block mt-1.5 text-[12px] font-bold text-green-700 bg-green-600/10 border border-green-600/25 rounded-full px-2.5 py-1">Paid in full</span>;
+    return <span className="inline-block mt-1.5 text-[12px] font-bold text-green-700 bg-green-600/10 border border-green-600/25 rounded-full px-2.5 py-1">{t('barber.pay.paid_in_full')}</span>;
   }
   if (remaining != null && remaining > 0) {
-    return <span className="inline-block mt-1.5 text-[12px] font-bold text-gold bg-gold/10 border border-gold/30 rounded-full px-2.5 py-1">Collect ${remaining.toFixed(2)}</span>;
+    return <span className="inline-block mt-1.5 text-[12px] font-bold text-gold bg-gold/10 border border-gold/30 rounded-full px-2.5 py-1">{t('barber.pay.collect').replace('${amount}', remaining.toFixed(2))}</span>;
   }
   return null;
 }
@@ -118,6 +121,7 @@ function ChatBtn({ label, unreadCount, onOpen }: { label: string; unreadCount: n
 // Payouts card: barber connects their bank via Stripe Connect to receive
 // haircut payouts directly. We never see or store bank details.
 function PayoutsCard({ token }: { token: string }) {
+  const { t } = useLang();
   const [status, setStatus] = useState<{ connected: boolean; payoutsEnabled: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -148,10 +152,10 @@ function PayoutsCard({ token }: { token: string }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok || !d?.url) throw new Error(d?.error || 'Could not start.');
+      if (!r.ok || !d?.url) throw new Error(d?.error + (d?.code ? ` (${d.code})` : '') || t('barber.payouts.error'));
       window.location.href = d.url;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start.');
+      setError(e instanceof Error ? e.message : t('barber.payouts.error'));
       setBusy(false);
     }
   }
@@ -163,16 +167,16 @@ function PayoutsCard({ token }: { token: string }) {
           💰
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-extrabold text-[16px] text-[#141414]">My payouts</div>
+          <div className="font-extrabold text-[16px] text-[#141414]">{t('barber.payouts.title')}</div>
           <div className="text-[12px] text-neutral-500">
             {status?.payoutsEnabled
-              ? 'Bank connected — haircut money goes straight to you'
-              : 'Connect your bank to receive your haircut money'}
+              ? t('barber.payouts.enabled_hint')
+              : t('barber.payouts.disabled_hint')}
           </div>
         </div>
         {status?.payoutsEnabled ? (
           <span className="inline-flex items-center gap-1 text-[12px] font-extrabold text-green-700 bg-green-600/10 border border-green-600/30 rounded-full px-3 py-1.5 shrink-0">
-            ✓ Connected
+            {t('barber.payouts.connected')}
           </span>
         ) : (
           <button
@@ -180,13 +184,13 @@ function PayoutsCard({ token }: { token: string }) {
             disabled={busy}
             className="gold-btn rounded-xl px-4 py-2.5 text-[13px] font-extrabold shrink-0"
           >
-            {busy ? '…' : status?.connected ? 'Finish setup' : 'Connect bank'}
+            {busy ? t('barber.payouts.connecting') : status?.connected ? t('barber.payouts.finish_setup') : t('barber.payouts.connect_bank')}
           </button>
         )}
       </div>
       {error && <p className="text-red-700 text-sm mt-3">{error}</p>}
       <p className="text-[11px] text-neutral-400 mt-3 leading-relaxed">
-        You enter your bank details on Stripe&apos;s secure page — we never see or store them.
+        {t('barber.payouts.secure_note')}
       </p>
     </div>
   );
@@ -194,6 +198,7 @@ function PayoutsCard({ token }: { token: string }) {
 
 // Barber's work portfolio: upload photos of their work (owner must approve).
 function WorkPhotosSection({ token }: { token: string }) {
+  const { t } = useLang();
   const [photos, setPhotos] = useState<{ id: string; url: string; status: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -220,10 +225,10 @@ function WorkPhotosSection({ token }: { token: string }) {
         body: form,
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Upload failed.');
+      if (!r.ok) throw new Error(d?.error || t('barber.photos.error'));
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed.');
+      setError(err instanceof Error ? err.message : t('barber.photos.error'));
     } finally {
       setBusy(false);
       e.target.value = '';
@@ -231,7 +236,7 @@ function WorkPhotosSection({ token }: { token: string }) {
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this photo?')) return;
+    if (!confirm(t('barber.photos.delete_confirm'))) return;
     try {
       const r = await fetch(`/api/barber/photos/${id}`, {
         method: 'DELETE',
@@ -240,7 +245,7 @@ function WorkPhotosSection({ token }: { token: string }) {
       if (!r.ok) throw new Error();
       setPhotos((p) => p.filter((x) => x.id !== id));
     } catch {
-      alert('Could not delete the photo. Please try again.');
+      alert(t('barber.photos.delete_error'));
     }
   }
 
@@ -251,11 +256,11 @@ function WorkPhotosSection({ token }: { token: string }) {
           📸
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-extrabold text-[16px] text-[#141414]">My work photos</div>
-          <div className="text-[12px] text-neutral-500">Show customers your work — the owner approves each photo</div>
+          <div className="font-extrabold text-[16px] text-[#141414]">{t('barber.photos.title')}</div>
+          <div className="text-[12px] text-neutral-500">{t('barber.photos.subtitle')}</div>
         </div>
         <label className="gold-btn rounded-xl px-4 py-2.5 text-[13px] font-extrabold shrink-0 cursor-pointer">
-          {busy ? '…' : '+ Add'}
+          {busy ? t('barber.photos.uploading') : t('barber.photos.add')}
           <input type="file" accept="image/*" className="hidden" onChange={upload} disabled={busy} />
         </label>
       </div>
@@ -264,16 +269,16 @@ function WorkPhotosSection({ token }: { token: string }) {
         <div className="grid grid-cols-3 gap-2 mt-4">
           {photos.map((p) => (
             <div key={p.id} className="relative rounded-xl overflow-hidden border border-gold/30">
-              <img src={p.url} alt="Work" className="w-full aspect-square object-cover" />
+              <img src={p.url} alt={t('barber.photos.photo_alt')} className="w-full aspect-square object-cover" />
               <span className={`absolute top-1 left-1 text-[10px] font-extrabold rounded-full px-2 py-0.5 ${
                 p.status === 'approved' ? 'bg-green-600/90 text-white' : 'bg-amber-500/90 text-white'
               }`}>
-                {p.status === 'approved' ? '✓ Live' : '⏳ Review'}
+                {p.status === 'approved' ? t('barber.photos.status_live') : t('barber.photos.status_review')}
               </span>
               <button
                 onClick={() => remove(p.id)}
                 className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-[12px] font-bold flex items-center justify-center"
-                aria-label="Delete photo"
+                aria-label={t('barber.photos.delete_aria')}
               >
                 ✕
               </button>
@@ -296,6 +301,7 @@ interface SkillRow {
 }
 
 function MySkillsSection({ token }: { token: string }) {
+  const { t } = useLang();
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -323,17 +329,17 @@ function MySkillsSection({ token }: { token: string }) {
         body: form,
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Upload failed.');
+      if (!r.ok) throw new Error(d?.error || t('barber.skills.upload_error'));
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed.');
+      setError(e instanceof Error ? e.message : t('barber.skills.upload_error'));
     } finally {
       setBusy(null);
     }
   }
 
   async function submit(skill: string) {
-    if (!confirm(`Send your "${skill}" photos to the owner for verification?`)) return;
+    if (!confirm(t('barber.skills.submit_confirm').replace('{skill}', skill))) return;
     setBusy(skill);
     setError('');
     try {
@@ -343,17 +349,17 @@ function MySkillsSection({ token }: { token: string }) {
         body: JSON.stringify({ skill }),
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Could not submit.');
+      if (!r.ok) throw new Error(d?.error || t('barber.skills.submit_error'));
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not submit.');
+      setError(e instanceof Error ? e.message : t('barber.skills.submit_error'));
     } finally {
       setBusy(null);
     }
   }
 
   async function removePhoto(skill: string, photoUrl: string) {
-    if (!confirm('Delete this photo?')) return;
+    if (!confirm(t('barber.skills.delete_confirm'))) return;
     setBusy(skill);
     try {
       await fetch('/api/barber/skills/photo', {
@@ -369,12 +375,12 @@ function MySkillsSection({ token }: { token: string }) {
 
   const statusChip = (s: SkillRow) => {
     if (s.verified || s.status === 'approved')
-      return <span className="chip !border-green-600/40 !text-green-700 shrink-0">✓ Verified</span>;
+      return <span className="chip !border-green-600/40 !text-green-700 shrink-0">{t('barber.skills.status_verified')}</span>;
     if (s.status === 'pending')
-      return <span className="chip !border-gold/60 !text-gold shrink-0">⏳ Under review</span>;
+      return <span className="chip !border-gold/60 !text-gold shrink-0">{t('barber.skills.status_pending')}</span>;
     if (s.status === 'rejected')
-      return <span className="chip !border-red-600/40 !text-red-700 shrink-0">✗ Not approved</span>;
-    return <span className="chip shrink-0">Not submitted</span>;
+      return <span className="chip !border-red-600/40 !text-red-700 shrink-0">{t('barber.skills.status_rejected')}</span>;
+    return <span className="chip shrink-0">{t('barber.skills.status_none')}</span>;
   };
 
   if (!skills.length) return null;
@@ -386,8 +392,8 @@ function MySkillsSection({ token }: { token: string }) {
           🎯
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-extrabold text-[16px] text-[#141414]">My skills</div>
-          <div className="text-[12px] text-neutral-500">Collect photos per skill — the owner verifies them</div>
+          <div className="font-extrabold text-[16px] text-[#141414]">{t('barber.skills.title')}</div>
+          <div className="text-[12px] text-neutral-500">{t('barber.skills.subtitle')}</div>
         </div>
       </div>
       {error && <p className="text-red-700 text-sm mt-3">{error}</p>}
@@ -409,7 +415,7 @@ function MySkillsSection({ token }: { token: string }) {
                 <div className="px-4 pb-4 fade-in">
                   {s.status === 'rejected' && (
                     <p className="text-[12px] text-red-700 bg-red-600/10 border border-red-600/25 rounded-xl px-3 py-2 mb-2.5">
-                      Not approved — add better photos and send again.
+                      {t('barber.skills.rejected_hint')}
                     </p>
                   )}
                   {s.photos.length > 0 && (
@@ -421,7 +427,7 @@ function MySkillsSection({ token }: { token: string }) {
                             <button
                               onClick={() => void removePhoto(s.name, url)}
                               className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-[12px] font-bold flex items-center justify-center"
-                              aria-label="Delete photo"
+                              aria-label={t('barber.skills.delete_aria')}
                             >
                               ✕
                             </button>
@@ -433,7 +439,7 @@ function MySkillsSection({ token }: { token: string }) {
                   {canEdit && (
                     <div className="flex gap-2">
                       <label className="flex-1 gold-btn rounded-xl px-4 py-2.5 text-[13px] font-extrabold text-center cursor-pointer">
-                        {busy === s.name ? '…' : `+ Photos (${s.photos.length}/10)`}
+                        {busy === s.name ? t('barber.skills.sending') : t('barber.skills.add_photos').replace('{count}', String(s.photos.length))}
                         <input
                           type="file"
                           accept="image/*"
@@ -448,18 +454,18 @@ function MySkillsSection({ token }: { token: string }) {
                         disabled={busy === s.name || s.photos.length < 3}
                         className="flex-1 rounded-xl px-4 py-2.5 text-[13px] font-extrabold bg-green-600 text-white disabled:opacity-40"
                       >
-                        {busy === s.name ? '…' : '✓ Send for verification'}
+                        {busy === s.name ? t('barber.skills.sending') : t('barber.skills.send')}
                       </button>
                     </div>
                   )}
                   {canEdit && s.photos.length < 3 && (
                     <p className="text-[11px] text-neutral-500 mt-1.5 text-center">
-                      Collect at least 3 photos, then send the batch to the owner.
+                      {t('barber.skills.min_photos')}
                     </p>
                   )}
                   {s.status === 'pending' && (
                     <p className="text-[12px] text-neutral-500 text-center py-1">
-                      Waiting for the owner's review…
+                      {t('barber.skills.waiting')}
                     </p>
                   )}
                 </div>
@@ -475,12 +481,20 @@ function MySkillsSection({ token }: { token: string }) {
 // Supply shop: the barber buys shop supplies here. No card, no Apple Pay —
 // every purchase is deducted from his earnings (next payouts settle it first).
 function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () => string | null }) {
+  const { t } = useLang();
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [orders, setOrders] = useState<ShopOrder[]>([]);
   const [debt, setDebt] = useState(0);
   const [buying, setBuying] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [msgKind, setMsgKind] = useState<'ok' | 'err' | 'info' | ''>('');
+  // setMsg + msgKind together: msgKind tracks success/error styling across
+  // languages (can't rely on English startsWith checks after translation).
+  function showMsg(text: string, kind: 'ok' | 'err' | 'info' | '') {
+    setMsg(text);
+    setMsgKind(kind);
+  }
   const [loaded, setLoaded] = useState(false);
   // Payment-method choice + card payment state.
   const [payProduct, setPayProduct] = useState<ShopProduct | null>(null);
@@ -490,27 +504,30 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
   const [cardTotal, setCardTotal] = useState(0);
 
   useEffect(() => {
-    const t = getToken();
-    if (!t) return;
+    const tok = getToken();
+    if (!tok) return;
     Promise.all([
-      fetch('/api/barber/shop/products', { headers: { Authorization: `Bearer ${t}` }, cache: 'no-store' }).then((r) => r.json()),
-      fetch('/api/barber/shop/orders', { headers: { Authorization: `Bearer ${t}` }, cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/barber/shop/products', { headers: { Authorization: `Bearer ${tok}` }, cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/barber/shop/orders', { headers: { Authorization: `Bearer ${tok}` }, cache: 'no-store' }).then((r) => r.json()),
     ])
       .then(([p, o]) => {
         setProducts(p.products || []);
         setOrders(o.orders || []);
         setDebt(o.debt || 0);
       })
-      .catch(() => setMsg('Could not load the shop.'))
+      .catch(() => showMsg(t('barber.shop.load_error'), 'err'))
       .finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function buyWithEarnings(p: ShopProduct, quantity: number) {
     const total = Math.round(p.priceUsd * quantity * 100) / 100;
-    if (!window.confirm(`Buy ${quantity} x "${p.name}" for $${total.toFixed(2)}?\n\nIt will be deducted from your earnings — no card needed.`)) return;
+    if (!window.confirm(t('barber.shop.buy_confirm')
+      .replace('{qty}', String(quantity))
+      .replace('{name}', p.name)
+      .replace('${total}', total.toFixed(2)))) return;
     setBuying(p.id);
-    setMsg('');
+    showMsg('', '');
     try {
       const r = await fetch('/api/barber/shop/orders', {
         method: 'POST',
@@ -518,20 +535,23 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
         body: JSON.stringify({ productId: p.id, quantity, payMethod: 'earnings' }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Could not buy.');
+      if (!r.ok) throw new Error(j.error || t('barber.shop.buy_error'));
       setOrders((os) => [j.order, ...os]);
       setDebt(j.debt || 0);
       setPayProduct(null);
-      setMsg(`✓ ${quantity} x "${p.name}" ordered — $${total.toFixed(2)} will be deducted from your earnings when the owner hands it over.`);
+      showMsg(t('barber.shop.ordered_earnings')
+        .replace('{qty}', String(quantity))
+        .replace('{name}', p.name)
+        .replace('${total}', total.toFixed(2)), 'ok');
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not buy.');
+      showMsg(e instanceof Error ? e.message : t('barber.shop.buy_error'), 'err');
     }
     setBuying(null);
   }
 
   async function buyWithCard(p: ShopProduct, quantity: number) {
     setCardBusy(true);
-    setMsg('');
+    showMsg('', '');
     try {
       const r = await fetch('/api/barber/shop/intent', {
         method: 'POST',
@@ -539,11 +559,11 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
         body: JSON.stringify({ productId: p.id, quantity }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Could not start the card payment.');
+      if (!r.ok) throw new Error(j.error || t('barber.shop.card_error'));
       setCardTotal(j.amount);
       setCardSecret(j.clientSecret);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not start the card payment.');
+      showMsg(e instanceof Error ? e.message : t('barber.shop.card_error'), 'err');
     }
     setCardBusy(false);
   }
@@ -559,19 +579,19 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
         body: JSON.stringify({ productId: p.id, quantity: qty, payMethod: 'card', paymentIntentId }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Could not complete the order.');
+      if (!r.ok) throw new Error(j.error || t('barber.shop.order_error'));
       setOrders((os) => [j.order, ...os]);
       setPayProduct(null);
       setCardSecret('');
-      setMsg(`✓ ${qty} x "${p.name}" paid — the owner will hand it over soon.`);
+      showMsg(t('barber.shop.card_success').replace('{qty}', String(qty)).replace('{name}', p.name), 'ok');
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Payment went through — show this to the owner.');
+      showMsg(e instanceof Error ? e.message : t('barber.shop.card_fallback_error'), e instanceof Error ? 'err' : 'info');
     }
     setBuying(null);
   }
 
   async function cancelOrder(id: string, productName: string) {
-    if (!window.confirm(`Cancel your order for "${productName}"?`)) return;
+    if (!window.confirm(t('barber.shop.cancel_confirm').replace('{name}', productName))) return;
     setCancelling(id);
     try {
       const r = await fetch(`/api/barber/shop/orders/${id}/cancel`, {
@@ -579,12 +599,12 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
         headers: { Authorization: `Bearer ${getToken()}` },
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Could not cancel.');
+      if (!r.ok) throw new Error(j.error || t('barber.shop.cancel_error'));
       setOrders((os) => os.filter((o) => o.id !== id));
       setDebt(j.debt || 0);
-      setMsg(j.refunded ? '✓ Order cancelled — your card was refunded.' : '✓ Order cancelled.');
+      showMsg(j.refunded ? t('barber.shop.cancelled_refunded') : t('barber.shop.cancelled'), 'ok');
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Could not cancel.');
+      showMsg(e instanceof Error ? e.message : t('barber.shop.cancel_error'), 'err');
     }
     setCancelling(null);
   }
@@ -596,32 +616,32 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
     <div className="fixed inset-0 z-50 bg-[#f7f2e2] overflow-y-auto fade-in">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-[22px] font-extrabold tracking-tight text-[#141414]">Supply shop 🛒</h1>
+          <h1 className="text-[22px] font-extrabold tracking-tight text-[#141414]">{t('barber.shop.title')}</h1>
           <button
             onClick={onClose}
             className="w-10 h-10 rounded-full bg-white border border-gold/40 flex items-center justify-center text-[18px] font-bold text-neutral-600 card-hover"
-            aria-label="Close shop"
+            aria-label={t('barber.shop.close_aria')}
           >
             ✕
           </button>
         </div>
         <p className="text-[12px] text-neutral-500 leading-relaxed mb-4">
-          Barber supplies from the shop storage. Pay from your earnings, or with card / Apple Pay.
+          {t('barber.shop.subtitle')}
         </p>
 
         {payProduct && !cardSecret && (
           <div className="card p-5 mb-4 fade-in">
             <h3 className="font-extrabold text-[16px] text-[#141414]">{payProduct.name}</h3>
             <p className="text-[13px] text-neutral-500 mt-1 mb-3">
-              <b className="text-[#141414]">${payProduct.priceUsd.toFixed(2)}</b> each
+              <b className="text-[#141414]">${payProduct.priceUsd.toFixed(2)}</b> {t('barber.shop.each')}
             </p>
             <div className="flex items-center gap-4 mb-4">
-              <span className="text-[13px] font-bold text-neutral-600">Quantity</span>
+              <span className="text-[13px] font-bold text-neutral-600">{t('barber.shop.quantity')}</span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setQty((q) => Math.max(1, q - 1))}
                   className="w-10 h-10 rounded-full bg-[#f4edda] border border-gold/40 text-[18px] font-extrabold text-[#141414]"
-                  aria-label="Decrease quantity"
+                  aria-label={t('barber.shop.decrease_aria')}
                 >
                   −
                 </button>
@@ -629,7 +649,7 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                 <button
                   onClick={() => setQty((q) => Math.min(99, q + 1))}
                   className="w-10 h-10 rounded-full bg-[#f4edda] border border-gold/40 text-[18px] font-extrabold text-[#141414]"
-                  aria-label="Increase quantity"
+                  aria-label={t('barber.shop.increase_aria')}
                 >
                   +
                 </button>
@@ -638,30 +658,30 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                 ${(payProduct.priceUsd * qty).toFixed(2)}
               </span>
             </div>
-            <h3 className="font-extrabold text-[15px] text-[#141414] mb-2">How do you want to pay?</h3>
+            <h3 className="font-extrabold text-[15px] text-[#141414] mb-2">{t('barber.shop.pay_title')}</h3>
             <div className="grid gap-2.5">
               <button
                 onClick={() => buyWithEarnings(payProduct, qty)}
                 disabled={buying === payProduct.id}
                 className="gold-btn rounded-2xl px-6 py-3.5 text-[15px] disabled:opacity-60 text-left"
               >
-                <span className="block font-extrabold">💰 Deduct from my earnings</span>
-                <span className="block text-[12px] font-medium opacity-80 mt-0.5">No card needed — settled from your next payouts</span>
+                <span className="block font-extrabold">{t('barber.shop.pay_earnings')}</span>
+                <span className="block text-[12px] font-medium opacity-80 mt-0.5">{t('barber.shop.pay_earnings_sub')}</span>
               </button>
               <button
                 onClick={() => buyWithCard(payProduct, qty)}
                 disabled={cardBusy}
                 className="rounded-2xl px-6 py-3.5 text-[15px] font-extrabold bg-[#1c1a15] text-white disabled:opacity-60 text-left"
               >
-                <span className="block font-extrabold">💳 Card / Apple Pay</span>
-                <span className="block text-[12px] font-medium opacity-70 mt-0.5">Pay ${(payProduct.priceUsd * qty).toFixed(2)} now with Stripe</span>
+                <span className="block font-extrabold">{t('barber.shop.pay_card')}</span>
+                <span className="block text-[12px] font-medium opacity-70 mt-0.5">{t('barber.shop.pay_card_sub').replace('${total}', (payProduct.priceUsd * qty).toFixed(2))}</span>
               </button>
               <button
                 onClick={() => setPayProduct(null)}
                 disabled={buying === payProduct.id || cardBusy}
                 className="text-sm text-neutral-500 font-medium py-1"
               >
-                ← Back to the shop
+                {t('barber.shop.back')}
               </button>
             </div>
           </div>
@@ -687,27 +707,34 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
         {debt > 0 && (
           <div className="rounded-2xl border border-gold/50 bg-[#fff8e6] px-4 py-3 mb-4">
             <p className="text-[13px] font-bold text-[#141414]">
-              You owe <span className="text-gold">${debt.toFixed(2)}</span> for supplies — it will be deducted from your next payouts.
+              {(() => {
+                const parts = t('barber.shop.debt').split('${debt}');
+                return parts.length === 2 ? (
+                  <>{parts[0]}<span className="text-gold">${debt.toFixed(2)}</span>{parts[1]}</>
+                ) : (
+                  t('barber.shop.debt').replace('${debt}', debt.toFixed(2))
+                );
+              })()}
             </p>
           </div>
         )}
 
         {msg && (
           <p className={`text-sm px-4 py-2.5 rounded-xl border leading-relaxed mb-4 ${
-            msg.startsWith('✓') || msg.startsWith('Could not')
-              ? msg.startsWith('✓')
-                ? 'text-green-800 bg-green-600/10 border-green-600/25'
-                : 'text-red-700 bg-red-600/10 border-red-600/25'
-              : 'text-neutral-700 bg-white border-gold/40'
+            msgKind === 'ok'
+              ? 'text-green-800 bg-green-600/10 border-green-600/25'
+              : msgKind === 'err'
+                ? 'text-red-700 bg-red-600/10 border-red-600/25'
+                : 'text-neutral-700 bg-white border-gold/40'
           }`}>{msg}</p>
         )}
 
         {!loaded ? (
-          <p className="text-sm text-neutral-500 text-center py-8">Loading…</p>
+          <p className="text-sm text-neutral-500 text-center py-8">{t('barber.shop.loading')}</p>
         ) : products.length === 0 ? (
           <div className="card p-8 text-center">
-            <p className="text-[15px] font-bold text-[#141414]">The shop is empty for now</p>
-            <p className="text-sm text-neutral-500 mt-1">The owner will add supplies here soon.</p>
+            <p className="text-[15px] font-bold text-[#141414]">{t('barber.shop.empty_title')}</p>
+            <p className="text-sm text-neutral-500 mt-1">{t('barber.shop.empty_body')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -728,12 +755,12 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                     <span className="font-extrabold text-[15px] text-[#141414]">${p.priceUsd.toFixed(2)}</span>
                     {!p.inStock && (
                       <span className="text-[10px] font-bold uppercase tracking-wide text-red-700 bg-red-600/10 border border-red-600/25 rounded-full px-2 py-0.5">
-                        Out of stock
+                        {t('barber.shop.out_of_stock')}
                       </span>
                     )}
                   </div>
                   <button
-                    onClick={() => { setPayProduct(p); setQty(1); setCardSecret(''); setMsg(''); }}
+                    onClick={() => { setPayProduct(p); setQty(1); setCardSecret(''); showMsg('', ''); }}
                     disabled={!p.inStock || buying === p.id}
                     className={`mt-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold min-h-[40px] transition-all ${
                       p.inStock
@@ -741,7 +768,7 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                         : 'bg-[#ece2c9] text-neutral-400 cursor-not-allowed'
                     } disabled:opacity-60`}
                   >
-                    {buying === p.id ? '…' : p.inStock ? 'Buy' : 'Not available'}
+                    {buying === p.id ? t('barber.shop.buying') : p.inStock ? t('barber.shop.buy') : t('barber.shop.not_available')}
                   </button>
                 </div>
               );
@@ -751,7 +778,7 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
 
         {orders.length > 0 && (
           <>
-            <h2 className="font-extrabold mt-7 mb-3 text-[16px] tracking-tight text-[#141414]">My purchases</h2>
+            <h2 className="font-extrabold mt-7 mb-3 text-[16px] tracking-tight text-[#141414]">{t('barber.shop.purchases_title')}</h2>
             <div className="grid gap-2">
               {orders.map((o) => {
                 const remaining = Math.round((o.priceUsd - o.deductedUsd) * 100) / 100;
@@ -765,22 +792,22 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-[13px] text-[#141414] truncate">{(o.quantity || 1) > 1 ? `${o.quantity} x ` : ''}{o.productName}</p>
                       <p className="text-[11px] text-neutral-500">
-                        {new Date(o.createdAt).toLocaleDateString()} · ${o.priceUsd.toFixed(2)} · {o.payMethod === 'card' ? '💳 Card' : '💰 Earnings'}
+                        {new Date(o.createdAt).toLocaleDateString()} · ${o.priceUsd.toFixed(2)} · {o.payMethod === 'card' ? t('barber.shop.pay_card_label') : t('barber.shop.pay_earnings_label')}
                       </p>
                       <p className="mt-1">
                         {status === 'pending' && (
                           <span className="text-[10px] font-bold uppercase tracking-wide text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5">
-                            ⏳ Waiting for the owner
+                            {t('barber.shop.status_waiting')}
                           </span>
                         )}
                         {status === 'confirmed' && (
                           <span className="text-[10px] font-bold uppercase tracking-wide text-green-800 bg-green-600/10 border border-green-600/25 rounded-full px-2 py-0.5">
-                            ✓ Handed over
+                            {t('barber.shop.status_handed')}
                           </span>
                         )}
                         {status === 'cancelled' && (
                           <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-500 bg-neutral-500/10 border border-neutral-500/25 rounded-full px-2 py-0.5">
-                            ✗ Cancelled
+                            {t('barber.shop.status_cancelled')}
                           </span>
                         )}
                       </p>
@@ -792,7 +819,7 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                             ? 'text-green-800 bg-green-600/10 border border-green-600/25'
                             : 'text-gold bg-gold/10 border border-gold/30'
                         }`}>
-                          {o.payMethod === 'card' ? '✓ Paid' : remaining <= 0 ? '✓ Paid off' : `$${remaining.toFixed(2)} owed`}
+                          {o.payMethod === 'card' ? t('barber.shop.paid') : remaining <= 0 ? t('barber.shop.paid_off') : t('barber.shop.owed').replace('${amount}', remaining.toFixed(2))}
                         </span>
                       )}
                       {status === 'pending' && (
@@ -801,7 +828,7 @@ function ShopModal({ onClose, getToken }: { onClose: () => void; getToken: () =>
                           disabled={cancelling === o.id}
                           className="text-[12px] font-bold text-red-700 border border-red-600/30 bg-red-600/5 rounded-full px-3 py-1.5 min-h-[36px] disabled:opacity-50"
                         >
-                          {cancelling === o.id ? '…' : 'Cancel order'}
+                          {cancelling === o.id ? t('barber.shop.cancelling') : t('barber.shop.cancel_order')}
                         </button>
                       )}
                     </div>
@@ -828,15 +855,16 @@ function SettingsModal({
   teamUnread: number;
   onOpenTeamChat: () => void;
 }) {
+  const { t } = useLang();
   return (
     <div className="fixed inset-0 z-50 bg-[#f7f2e2] overflow-y-auto fade-in">
       <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-[22px] font-extrabold tracking-tight text-[#141414]">Settings</h1>
+          <h1 className="text-[22px] font-extrabold tracking-tight text-[#141414]">{t('barber.settings.title')}</h1>
           <button
             onClick={onClose}
             className="w-10 h-10 rounded-full bg-white border border-gold/40 flex items-center justify-center text-[18px] font-bold text-neutral-600 card-hover"
-            aria-label="Close settings"
+            aria-label={t('barber.settings.close_aria')}
           >
             ✕
           </button>
@@ -852,8 +880,8 @@ function SettingsModal({
               💬
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-extrabold text-[16px] text-[#141414]">Team chat</div>
-              <div className="text-[12px] text-neutral-500">Talk with all the barbers</div>
+              <div className="font-extrabold text-[16px] text-[#141414]">{t('barber.settings.team_chat')}</div>
+              <div className="text-[12px] text-neutral-500">{t('barber.settings.team_chat_sub')}</div>
             </div>
             {teamUnread > 0 && (
               <span className="bg-red-600 text-white text-[11px] font-extrabold rounded-full min-w-[20px] h-[20px] flex items-center justify-center px-1.5 shrink-0">
@@ -863,6 +891,10 @@ function SettingsModal({
             <span className="text-neutral-400 font-extrabold text-lg shrink-0">›</span>
           </div>
         </button>
+
+        <div className="mt-4">
+          <LanguageSwitcher />
+        </div>
 
         <div className="mt-4">
           <BonusCard token={getToken() ?? ''} />
@@ -885,26 +917,30 @@ function SettingsModal({
 // "Done" button: barber takes a proof-of-completion PHOTO with the camera
 // (like DoorDash proof-of-delivery) → payout is sent. No photo = no payout.
 function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: string; onDone: (payoutAmount: number) => void }) {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  // Split the hint on the em-dash so the payout part keeps its bold styling
+  // in every language (all translations keep the "—" separator).
+  const hintParts = t('barber.done.hint').split('—');
 
   function pickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = '';
     if (!f) return;
-    if (!f.type.startsWith('image/')) { setError('That file is not an image.'); return; }
-    if (f.size > 5 * 1024 * 1024) { setError('Photo is too large (max 5MB).'); return; }
+    if (!f.type.startsWith('image/')) { setError(t('barber.done.error_not_image')); return; }
+    if (f.size > 5 * 1024 * 1024) { setError(t('barber.done.error_too_large')); return; }
     setPhoto(f);
     setError('');
     setPreview(URL.createObjectURL(f));
   }
 
   async function confirm() {
-    if (!photo) { setError('Take a photo of the finished haircut.'); return; }
+    if (!photo) { setError(t('barber.done.error_no_photo')); return; }
     setBusy(true);
     setError('');
     try {
@@ -916,14 +952,14 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
         body: form,
       });
       const d = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(d?.error || 'Could not mark as done.');
+      if (!r.ok) throw new Error(d?.error || t('barber.done.error_generic'));
       if (d.payoutFailed) {
-        setError(`Done ✓ but payout failed: ${d.error || 'try again later.'}`);
+        setError(t('barber.done.payout_failed').replace('{error}', d.error || 'try again later.'));
       }
       onDone(d.payoutAmount ?? 0);
       close();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not mark as done.');
+      setError(e instanceof Error ? e.message : t('barber.done.error_generic'));
     } finally {
       setBusy(false);
     }
@@ -943,7 +979,7 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
         disabled={busy}
         className="inline-flex items-center gap-1 text-[13px] font-extrabold text-white bg-green-600 rounded-full px-4 py-2 min-h-[40px] card-hover disabled:opacity-50"
       >
-        ✓ Done
+        {t('barber.done.button')}
       </button>
       {error && !open && <span className="block text-red-700 text-xs mt-1">{error}</span>}
       {open && (
@@ -951,17 +987,21 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
           <div className="absolute inset-0 bg-black/60" onClick={close} />
           <div className="relative card w-full max-w-sm p-5 fade-in max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h3 className="font-extrabold text-[17px]">Finish haircut ✂️</h3>
+              <h3 className="font-extrabold text-[17px]">{t('barber.done.title')}</h3>
               <button
                 onClick={close}
-                aria-label="Close"
+                aria-label={t('barber.scan.close_aria')}
                 className="w-9 h-9 shrink-0 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-600 font-bold text-[15px] leading-none"
               >
                 ✕
               </button>
             </div>
             <p className="text-[13px] text-neutral-500 mb-4">
-              Take a photo of the finished haircut — <b>your payout is sent when the photo is taken</b>.
+              {hintParts.length === 2 ? (
+                <>{hintParts[0]}—<b>{hintParts[1]}</b></>
+              ) : (
+                t('barber.done.hint')
+              )}
             </p>
             <input
               ref={fileRef}
@@ -973,11 +1013,11 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
             />
             {preview ? (
               <div className="relative rounded-2xl overflow-hidden border-2 border-gold/50">
-                <img src={preview} alt="Finished haircut" className="w-full max-h-[260px] object-cover" />
+                <img src={preview} alt={t('barber.done.photo_alt')} className="w-full max-h-[260px] object-cover" />
                 <button
                   onClick={() => { setPhoto(null); setPreview(null); }}
                   className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white font-bold text-[15px]"
-                  aria-label="Retake photo"
+                  aria-label={t('barber.done.retake_aria')}
                 >
                   ✕
                 </button>
@@ -988,8 +1028,8 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
                 className="w-full rounded-2xl border-2 border-dashed border-gold/50 bg-[#f7f2e2] py-10 text-center card-hover"
               >
                 <div className="text-[36px]">📷</div>
-                <p className="text-[14px] font-bold text-gold mt-1">Take a photo</p>
-                <p className="text-[12px] text-neutral-500 mt-0.5">Opens your camera directly</p>
+                <p className="text-[14px] font-bold text-gold mt-1">{t('barber.done.take_photo')}</p>
+                <p className="text-[12px] text-neutral-500 mt-0.5">{t('barber.done.opens_camera')}</p>
               </button>
             )}
             {error && (
@@ -1002,7 +1042,7 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
               disabled={busy || !photo}
               className="gold-btn rounded-2xl w-full font-extrabold text-[15px] py-3.5 mt-4 disabled:opacity-50"
             >
-              {busy ? 'Sending…' : '✓ Confirm & get paid'}
+              {busy ? t('barber.done.sending') : t('barber.done.confirm')}
             </button>
           </div>
         </div>
@@ -1024,6 +1064,7 @@ function Stars({ rating }: { rating: number }) {
 
 export default function BarberDashboard() {
   const router = useRouter();
+  const { t } = useLang();
   const [data, setData] = useState<ScheduleData | null>(null);
   const [error, setError] = useState('');
   const [earnings, setEarnings] = useState<{ today: number; week: number; month: number } | null>(null);
@@ -1072,7 +1113,7 @@ export default function BarberDashboard() {
         return r.json();
       })
       .then((d) => d && setData(d))
-      .catch(() => setError('Could not load schedule.'));
+      .catch(() => setError(t('barber.dashboard.load_error')));
   }, [router]);
 
   const loadEarnings = useCallback(() => {
@@ -1116,7 +1157,7 @@ export default function BarberDashboard() {
     const isOpen = !!hoursForm[num];
     // Shop policy: at most 2 days off per week (min 5 open days).
     if (isOpen && Object.keys(hoursForm).length <= 5) {
-      setHoursMsg('You can take at most 2 days off per week.');
+      setHoursMsg(t('barber.dashboard.hours_max_days_off'));
       return;
     }
     setHoursForm((f) => {
@@ -1132,7 +1173,7 @@ export default function BarberDashboard() {
     const cur = hoursForm[num] || [];
     // Shop policy: at least 6 working hours on each open day.
     if (cur.includes(hour) && cur.length <= 6) {
-      setHoursMsg('Work at least 6 hours on each open day.');
+      setHoursMsg(t('barber.dashboard.hours_min_hours'));
       return;
     }
     setHoursForm((f) => {
@@ -1154,11 +1195,11 @@ export default function BarberDashboard() {
         body: JSON.stringify({ workingHours: hoursForm }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Could not save hours.');
+      if (!r.ok) throw new Error(j.error || t('barber.dashboard.hours_save_error'));
       setData((d) => (d ? { ...d, workingHours: j.workingHours } : d));
-      setHoursMsg('Saved — customers can now book you only during your open hours.');
+      setHoursMsg(t('barber.dashboard.hours_saved'));
     } catch (e) {
-      setHoursMsg(e instanceof Error ? e.message : 'Could not save hours.');
+      setHoursMsg(e instanceof Error ? e.message : t('barber.dashboard.hours_save_error'));
     }
     setHoursBusy(false);
   }
@@ -1214,22 +1255,22 @@ export default function BarberDashboard() {
     <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-bold tracking-[0.32em] uppercase text-gold">Barber dashboard</p>
+          <p className="text-[11px] font-bold tracking-[0.32em] uppercase text-gold">{t('barber.dashboard.eyebrow')}</p>
           <h1 className="mt-1.5 text-[32px] leading-tight font-extrabold tracking-tight text-[#141414]">{data.barberName}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShopOpen(true)}
             className="w-10 h-10 rounded-full bg-white border border-gold/40 flex items-center justify-center text-[18px] card-hover"
-            aria-label="Supply shop"
-            title="Supply shop"
+            aria-label={t('barber.dashboard.shop_aria')}
+            title={t('barber.dashboard.shop_aria')}
           >
             🛒
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
             className="w-10 h-10 rounded-full bg-white border border-gold/40 flex items-center justify-center text-neutral-700 card-hover relative"
-            aria-label="Settings"
+            aria-label={t('barber.dashboard.settings_aria')}
           >
             <GearIcon size={20} />
             {teamUnread > 0 && (
@@ -1239,7 +1280,7 @@ export default function BarberDashboard() {
             )}
           </button>
           <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-neutral-600 hover:text-gold transition-colors">
-            <LogOutIcon size={16} /> Log out
+            <LogOutIcon size={16} /> {t('barber.dashboard.logout')}
           </button>
         </div>
       </div>
@@ -1247,7 +1288,7 @@ export default function BarberDashboard() {
       <div className="mt-5 card p-4 border-gold/50 !bg-gradient-to-b !from-[#fffdf6] !to-[#faf3df]">
         <CollectScanner getToken={barberToken} onCollected={reloadAll} />
         <p className="text-[12px] text-neutral-500 text-center mt-2 leading-relaxed">
-          Before starting the haircut, scan the customer&apos;s payment code to collect the remaining balance.
+          {t('barber.dashboard.scan_hint')}
         </p>
       </div>
 
@@ -1255,12 +1296,12 @@ export default function BarberDashboard() {
         className="mt-4 rounded-3xl p-5 relative overflow-hidden border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)]"
         style={{ background: 'linear-gradient(135deg, #fdf8ea 0%, #f6ead0 100%)' }}
       >
-        <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">My earnings</p>
+        <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">{t('barber.dashboard.earnings_title')}</p>
         <div className="grid grid-cols-3 gap-2 mt-3 text-center">
           {[
-            { label: 'Today', value: earnings?.today },
-            { label: 'This week', value: earnings?.week },
-            { label: 'This month', value: earnings?.month },
+            { label: t('barber.dashboard.earnings_today'), value: earnings?.today },
+            { label: t('barber.dashboard.earnings_week'), value: earnings?.week },
+            { label: t('barber.dashboard.earnings_month'), value: earnings?.month },
           ].map((e) => (
             <div key={e.label}>
               <div className="text-[19px] font-extrabold text-gold-dark">{e.value != null ? `$${e.value.toFixed(2)}` : '—'}</div>
@@ -1268,15 +1309,15 @@ export default function BarberDashboard() {
             </div>
           ))}
         </div>
-        <p className="text-[10.5px] text-white/40 mt-3">Paid haircuts · plan haircuts count $30 each</p>
+        <p className="text-[10.5px] text-white/40 mt-3">{t('barber.dashboard.earnings_note')}</p>
       </div>
 
       <div className="grid grid-cols-4 gap-2.5 mt-5">
         {[
-          { label: 'Today', value: data.metrics.todayCount },
-          { label: 'Bookings', value: data.metrics.totalBookings },
-          { label: 'Reviews', value: data.metrics.reviewCount },
-          { label: 'Rating', value: data.metrics.avgRating !== null ? data.metrics.avgRating.toFixed(1) : '—' },
+          { label: t('barber.dashboard.metric_today'), value: data.metrics.todayCount },
+          { label: t('barber.dashboard.metric_bookings'), value: data.metrics.totalBookings },
+          { label: t('barber.dashboard.metric_reviews'), value: data.metrics.reviewCount },
+          { label: t('barber.dashboard.metric_rating'), value: data.metrics.avgRating !== null ? data.metrics.avgRating.toFixed(1) : '—' },
         ].map((m) => (
           <div key={m.label} className="card p-3 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-gold/70 to-transparent" />
@@ -1286,14 +1327,14 @@ export default function BarberDashboard() {
         ))}
       </div>
 
-      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">My working hours</h2>
+      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">{t('barber.dashboard.hours_title')}</h2>
       <div className="card p-5">
         <p className="text-[12px] text-neutral-500 leading-relaxed mb-4">
-          Shop policy: at most <b className="text-neutral-700">2 days off</b> per week, and at least <b className="text-neutral-700">6 hours</b> on each working day.
+          {t('barber.dashboard.hours_policy')}
         </p>
         {!data.workingHours && (
           <p className="text-sm text-neutral-600 leading-relaxed mb-4">
-            You haven&apos;t set your hours yet — customers can currently book you at any time. Tap the hours you work each day, then save. You decide, hour by hour.
+            {t('barber.dashboard.hours_not_set')}
           </p>
         )}
         <div className="grid gap-2">
@@ -1308,7 +1349,7 @@ export default function BarberDashboard() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="w-10 text-sm font-extrabold text-[#141414]">{w.label}</span>
+                  <span className="w-10 text-sm font-extrabold text-[#141414]">{t(`barber.dashboard.day_${w.label.toLowerCase()}`)}</span>
                   <button
                     onClick={() => toggleDay(w.num)}
                     className={`px-3.5 py-1.5 rounded-full text-[13px] font-bold min-h-[36px] transition-all ${
@@ -1317,9 +1358,9 @@ export default function BarberDashboard() {
                         : 'bg-[#ece2c9] text-neutral-500'
                     }`}
                   >
-                    {open ? 'Open' : 'Closed'}
+                    {open ? t('barber.dashboard.hours_open') : t('barber.dashboard.hours_closed')}
                   </button>
-                  {open && <span className="ml-auto text-xs text-neutral-500 font-semibold">{selected.length} {selected.length === 1 ? 'hr' : 'hrs'}</span>}
+                  {open && <span className="ml-auto text-xs text-neutral-500 font-semibold">{selected.length} {selected.length === 1 ? t('barber.dashboard.hours_hr') : t('barber.dashboard.hours_hrs')}</span>}
                 </div>
                 {open && (
                   <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -1347,20 +1388,20 @@ export default function BarberDashboard() {
         </div>
         {hoursMsg && (
           <p className={`text-sm mt-3 px-4 py-2.5 rounded-xl border leading-relaxed ${
-            hoursMsg.startsWith('Saved')
+            hoursMsg === t('barber.dashboard.hours_saved')
               ? 'text-green-800 bg-green-600/10 border-green-600/25'
               : 'text-red-700 bg-red-600/10 border-red-600/25'
           }`}>{hoursMsg}</p>
         )}
         <button onClick={saveHours} disabled={hoursBusy} className="gold-btn rounded-2xl px-6 py-3 mt-4 text-[15px] w-full sm:w-auto">
-          {hoursBusy ? 'Saving…' : 'Save my hours'}
+          {hoursBusy ? t('barber.dashboard.hours_saving') : t('barber.dashboard.hours_save')}
         </button>
       </div>
 
       {next && (
         <div className="card card-selected p-5 mt-5 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent" />
-          <div className="label !mb-2 !text-gold/90">Next appointment</div>
+          <div className="label !mb-2 !text-gold/90">{t('barber.dashboard.next_appointment')}</div>
           <div className="flex items-center gap-3">
             <CustomerAvatar b={next} size={44} />
             <div className="min-w-0">
@@ -1376,15 +1417,15 @@ export default function BarberDashboard() {
           </div>
           <PayState b={next} />
           <div className="mt-3 flex items-center gap-3 flex-wrap">
-            <ChatBtn label={`Chat with ${next.customerName}`} unreadCount={unread[next.id] ?? 0} onOpen={() => setChatBooking(next)} />
+            <ChatBtn label={t('barber.dashboard.chat_with').replace('{name}', next.customerName)} unreadCount={unread[next.id] ?? 0} onOpen={() => setChatBooking(next)} />
             <CancelBookingButton bookingId={next.id} getToken={barberToken} onCancelled={() => markCancelledLocal(next.id)} />
           </div>
         </div>
       )}
 
-      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">Today&apos;s schedule</h2>
+      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">{t('barber.dashboard.today_schedule')}</h2>
       {data.today.length === 0 && (
-        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">Nothing booked today.</p></div>
+        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">{t('barber.dashboard.today_empty')}</p></div>
       )}
       <div className="grid gap-2.5">
         {data.today.map((b) => b.status !== 'booked' ? (
@@ -1416,7 +1457,7 @@ export default function BarberDashboard() {
                 <PayState b={b} />
                 {b.completedAt && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-green-700 bg-green-600/10 border border-green-600/30 rounded-full px-2.5 py-1 shrink-0">
-                    ✓ Done{b.payoutAmount ? ` · $${b.payoutAmount.toFixed(2)}` : ''}
+                    {t('barber.done.button')}{b.payoutAmount ? ` · $${b.payoutAmount.toFixed(2)}` : ''}
                   </span>
                 )}
               </span>
@@ -1427,15 +1468,15 @@ export default function BarberDashboard() {
               )}
               <NoShowButton bookingId={b.id} getToken={barberToken} onMarked={() => markNoShowLocal(b.id)} />
               <CancelBookingButton bookingId={b.id} getToken={barberToken} onCancelled={() => markCancelledLocal(b.id)} />
-              <ChatBtn label="Chat" unreadCount={unread[b.id] ?? 0} onOpen={() => setChatBooking(b)} />
+              <ChatBtn label={t('barber.dashboard.chat_short')} unreadCount={unread[b.id] ?? 0} onOpen={() => setChatBooking(b)} />
             </div>
           </div>
         ))}
       </div>
 
-      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">Upcoming</h2>
+      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">{t('barber.dashboard.upcoming')}</h2>
       {data.upcoming.length === 0 && (
-        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">No upcoming bookings.</p></div>
+        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">{t('barber.dashboard.upcoming_empty')}</p></div>
       )}
       <div className="grid gap-2.5">
         {data.upcoming.slice(0, 10).map((b) => b.status !== 'booked' ? (
@@ -1459,7 +1500,7 @@ export default function BarberDashboard() {
             <div className="mt-1 flex items-center gap-5 flex-wrap">
               <NoShowButton bookingId={b.id} getToken={barberToken} onMarked={() => markNoShowLocal(b.id)} />
               <CancelBookingButton bookingId={b.id} getToken={barberToken} onCancelled={() => markCancelledLocal(b.id)} />
-              <ChatBtn label="Chat" unreadCount={unread[b.id] ?? 0} onOpen={() => setChatBooking(b)} />
+              <ChatBtn label={t('barber.dashboard.chat_short')} unreadCount={unread[b.id] ?? 0} onOpen={() => setChatBooking(b)} />
             </div>
           </div>
         ))}
@@ -1467,11 +1508,11 @@ export default function BarberDashboard() {
 
       <BarberTasks getToken={barberToken} />
 
-      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">🏆 Leaderboard</h2>
+      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">{t('barber.dashboard.leaderboard_title')}</h2>
       <Leaderboard apiBase="/api/barber/leaderboard" getToken={barberToken} />
 
-      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">Reviews</h2>      {data.reviews.length === 0 && (
-        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">No reviews yet.</p></div>
+      <h2 className="font-extrabold mt-7 mb-3 text-[18px] tracking-tight text-[#141414]">{t('barber.dashboard.reviews_title')}</h2>      {data.reviews.length === 0 && (
+        <div className="card p-6 text-center"><p className="text-sm text-neutral-500">{t('barber.dashboard.reviews_empty')}</p></div>
       )}
       <div className="grid gap-2.5">
         {data.reviews.map((r) => (
@@ -1488,7 +1529,7 @@ export default function BarberDashboard() {
       {chatBooking && (
         <ChatModal
           bookingId={chatBooking.id}
-          title={`Chat with ${chatBooking.customerName}`}
+          title={t('barber.chat.title').replace('{name}', chatBooking.customerName)}
           subtitle={`${chatBooking.date} · ${fmtTime(chatBooking.time)}`}
           me="barber"
           getToken={barberToken}

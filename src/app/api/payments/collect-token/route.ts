@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   const service = services.find((s) => s.id === booking.serviceId);
   if (!service) return NextResponse.json({ error: 'Service not found.' }, { status: 404 });
 
-  const remaining = remainingFor(service.price, booking.amountPaid);
+  const remaining = remainingFor(booking.servicePrice ?? service.price, booking.amountPaid);
   if (remaining <= 0) {
     return NextResponse.json({ error: 'Nothing left to pay.' }, { status: 409 });
   }

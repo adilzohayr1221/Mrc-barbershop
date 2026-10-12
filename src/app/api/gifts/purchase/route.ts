@@ -3,6 +3,7 @@ import { getServices, getCustomer, listGifts, saveGift, newId } from '@/lib/stor
 import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, toCents } from '@/lib/stripe';
+import { discountPrice } from '@/lib/discount';
 import { randomBytes } from 'node:crypto';
 import type { Gift } from '@/lib/types';
 
@@ -53,6 +54,9 @@ export async function POST(req: Request) {
   const service = services.find((s) => s.id === serviceId && s.active);
   if (!service) return NextResponse.json({ error: 'Invalid service' }, { status: 400 });
 
+  // The gift must be paid at the buyer's discounted price (if approved).
+  const finalPrice = discountPrice(service.price, customer);
+
   let intent;
   try {
     intent = await getStripe().paymentIntents.retrieve(paymentIntentId);
@@ -62,7 +66,7 @@ export async function POST(req: Request) {
   }
   if (
     intent.status !== 'succeeded' ||
-    intent.amount !== toCents(service.price) ||
+    intent.amount !== toCents(finalPrice) ||
     intent.currency !== 'usd'
   ) {
     return NextResponse.json({ error: 'Payment did not complete for this service.' }, { status: 402 });
@@ -83,7 +87,7 @@ export async function POST(req: Request) {
     recipientName,
     serviceId: service.id,
     serviceName: service.name,
-    price: service.price,
+    price: finalPrice,
     status: 'active',
     token: randomBytes(16).toString('hex'),
     shortCode: makeShortCode(new Set(existing.map((g) => g.shortCode))),

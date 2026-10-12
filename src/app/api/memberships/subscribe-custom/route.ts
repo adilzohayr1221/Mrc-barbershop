@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/auth';
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
 import { ensureStripeCustomer, customPlanPrice } from '@/lib/membership';
-import { getServices } from '@/lib/store';
+import { discountPrice } from '@/lib/discount';
+import { getServices, getCustomer } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,9 @@ export async function POST(req: Request) {
   }
   const price = customPlanPrice(picked.map((s) => s!.price));
   const weeklyServices = picked.map((s) => ({ serviceId: s!.id, name: s!.name, price: s!.price }));
+  // Approved student/military customers pay 15% less on the custom plan too.
+  const customer = await getCustomer(session.customerId);
+  const finalPrice = discountPrice(price, customer);
   try {
     const stripeCustomerId = await ensureStripeCustomer(session.customerId);
     const origin = new URL(req.url).origin;
@@ -42,7 +46,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: 'usd',
             product_data: { name: 'MRC Mix & Match Weekly Plan' },
-            unit_amount: price * 100,
+            unit_amount: Math.round(finalPrice * 100),
             recurring: { interval: 'month' },
           },
           quantity: 1,
@@ -55,7 +59,7 @@ export async function POST(req: Request) {
           kind: 'membership',
           planKind: 'custom',
           customerId: session.customerId,
-          planPriceUsd: String(price),
+          planPriceUsd: String(finalPrice),
           weeklyServices: JSON.stringify(weeklyServices),
         },
         description: `MRC Mix & Match Plan — ${weekSummary}`,
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
         kind: 'membership',
         planKind: 'custom',
         customerId: session.customerId,
-        planPriceUsd: String(price),
+        planPriceUsd: String(finalPrice),
         weeklyServices: JSON.stringify(weeklyServices),
       },
     });

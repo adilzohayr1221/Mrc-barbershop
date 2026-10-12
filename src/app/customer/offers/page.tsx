@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { ArrowLeftIcon, CheckIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
 import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useLang } from '@/components/LanguageContext';
 import { MembershipCodeButton } from '@/components/MembershipCodeButton';
 import { withSalon } from '../salonQuery';
 
@@ -61,6 +62,7 @@ function MembershipWallet({
   setConfirmCancel: (id: string | null) => void;
   onCancel: (membershipId: string, action: 'cancel' | 'resume') => void;
 }) {
+  const { t } = useLang();
   const availableIdx = m.weeks.findIndex((w) => w.state === 'available');
   const weekService =
     m.planKind === 'custom' && m.weeklyServices && availableIdx >= 0
@@ -70,7 +72,7 @@ function MembershipWallet({
     <div className="fade-in">
       {m.status === 'past_due' && (
         <p className="text-[13px] font-semibold text-red-700 bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-3 mb-4 leading-relaxed">
-          Your last payment failed — please update your card on file, then your plan resumes.
+          {t('offers.pastDue')}
         </p>
       )}
       <div className="relative overflow-hidden rounded-3xl p-6 border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)]"
@@ -81,10 +83,10 @@ function MembershipWallet({
             <h2 className="font-extrabold text-[20px] mt-1 text-white">{m.planName ?? 'Monthly Plan'}</h2>
           </div>
           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${m.status === 'active' ? 'bg-green-600/10 text-green-700 border border-green-600/30' : 'bg-red-600/10 text-red-700 border border-red-600/30'}`}>
-            {m.status === 'active' ? (m.cancelAtPeriodEnd ? 'Ends soon' : 'Active') : 'Past due'}
+            {m.status === 'active' ? (m.cancelAtPeriodEnd ? t('offers.endsSoon') : t('offers.active')) : t('offers.pastDueShort')}
           </span>
         </div>
-        <p className="text-[13px] text-neutral-300 mt-1">{m.memberName}{m.planPrice ? ` · $${m.planPrice}/mo` : ''}</p>
+        <p className="text-[13px] text-neutral-300 mt-1">{m.memberName}{m.planPrice ? ` · $${m.planPrice}${t('offers.perMo')}` : ''}</p>
         {m.planKind === 'custom' && m.weeklyServices && (
           <div className="grid grid-cols-2 gap-1.5 mt-3">
             {m.weeklyServices.map((w, i) => (
@@ -99,11 +101,11 @@ function MembershipWallet({
         </div>
         <p className="text-[12px] text-neutral-400 mt-3 leading-relaxed">
           {m.currentWeekAvailable
-            ? `✓ This week: ${weekService ?? '1 haircut'} available`
-            : m.planKind === 'custom' ? "This week's service is used or gone." : "This week's haircut is used or gone."}
-          {' · '}Renews {fmtDay(m.currentPeriodEnd)}
+            ? `✓ ${t('offers.thisWeekAvailable').replace('{service}', weekService ?? '1 haircut')}`
+            : m.planKind === 'custom' ? t('offers.weekUsedGoneCustom') : t('offers.weekUsedGone')}
+          {' · '}{t('offers.renews').replace('{date}', fmtDay(m.currentPeriodEnd))}
         </p>
-        <p className="text-[12px] text-gold font-semibold mt-1.5">Stay fresh all month long.</p>
+        <p className="text-[12px] text-gold font-semibold mt-1.5">{t('offers.stayFresh')}</p>
       </div>
 
       {m.status === 'active' && m.currentWeekAvailable ? (
@@ -111,8 +113,8 @@ function MembershipWallet({
       ) : (
         <p className="text-center text-[13px] text-neutral-400 mt-3 leading-relaxed">
           {m.status === 'past_due'
-            ? 'Fix your payment to get this week\u2019s code.'
-            : 'This week\u2019s code is used — the next one appears when its week starts.'}
+            ? t('offers.fixPaymentForCode')
+            : t('offers.codeUsedNextWeek')}
         </p>
       )}
 
@@ -122,7 +124,7 @@ function MembershipWallet({
           disabled={busy}
           className="w-full mt-4 text-[13px] text-gold font-bold py-2 disabled:opacity-50"
         >
-          {busy ? 'Working…' : '↩ Resume this plan'}
+          {busy ? t('offers.working') : `↩ ${t('offers.resumePlan')}`}
         </button>
       ) : confirmCancel !== m.id ? (
         <button
@@ -130,13 +132,13 @@ function MembershipWallet({
           disabled={busy}
           className="w-full mt-4 text-[13px] text-neutral-400 font-medium py-2"
         >
-          Cancel my plan
+          {t('offers.cancelMyPlan')}
         </button>
       ) : (
         <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-4 fade-in">
-          <p className="text-[14px] font-bold">Cancel the plan?</p>
+          <p className="text-[14px] font-bold">{t('offers.cancelThePlan')}</p>
           <p className="text-[13px] text-neutral-500 mt-1 leading-relaxed">
-            It stays active until {fmtDay(m.currentPeriodEnd)} — your paid weeks still work.
+            {t('offers.cancelStaysActive').replace('{date}', fmtDay(m.currentPeriodEnd))}
           </p>
           <div className="flex gap-2 mt-3">
             <button
@@ -144,14 +146,14 @@ function MembershipWallet({
               disabled={busy}
               className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#f4edda] border border-[#dccfae] text-neutral-700 disabled:opacity-50"
             >
-              Keep my plan
+              {t('offers.keepMyPlan')}
             </button>
             <button
               onClick={() => onCancel(m.id, 'cancel')}
               disabled={busy}
               className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-red-700 disabled:opacity-50"
             >
-              {busy ? 'Cancelling…' : 'Yes, cancel'}
+              {busy ? t('offers.cancelling') : t('offers.yesCancel')}
             </button>
           </div>
         </div>
@@ -162,10 +164,12 @@ function MembershipWallet({
 
 /** Mix & Match plan builder: pick a service for each of the 4 weeks.
  *  The monthly price is computed live from the chosen services' real prices. */
-function MixMatchBuilder({ token, onError }: { token: string; onError: (msg: string) => void }) {
+function MixMatchBuilder({ token, onError, hasDiscount }: { token: string; onError: (msg: string) => void; hasDiscount: boolean }) {
+  const { t } = useLang();
   const [services, setServices] = useState<{ id: string; name: string; price: number }[]>([]);
   const [picks, setPicks] = useState<string[]>(['', '', '', '']);
   const [busy, setBusy] = useState(false);
+  const disc = (p: number) => hasDiscount ? Math.round(p * 0.85 * 100) / 100 : p;
 
   useEffect(() => {
     fetch(withSalon('/api/services'))
@@ -185,10 +189,11 @@ function MixMatchBuilder({ token, onError }: { token: string; onError: (msg: str
     }, 0);
     return { sum, price: Math.max(1, Math.round(sum * 0.75)) };
   })();
+  const showPrice = disc(price);
 
   async function subscribeCustom() {
     if (picks.some((p) => !p)) {
-      onError('Pick a service for each week.');
+      onError(t('offers.pickEachWeek'));
       return;
     }
     setBusy(true);
@@ -200,10 +205,10 @@ function MixMatchBuilder({ token, onError }: { token: string; onError: (msg: str
         body: JSON.stringify({ serviceIds: picks }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Could not start the subscription.');
+      if (!r.ok) throw new Error(d.error || t('offers.couldNotStartSub'));
       window.location.href = d.url;
     } catch (e) {
-      onError(e instanceof Error ? e.message : 'Could not start the subscription.');
+      onError(e instanceof Error ? e.message : t('offers.couldNotStartSub'));
       setBusy(false);
     }
   }
@@ -212,27 +217,28 @@ function MixMatchBuilder({ token, onError }: { token: string; onError: (msg: str
     <div className="fade-in mt-4">
       <div className="relative overflow-hidden rounded-3xl p-6 border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)]"
         style={{ background: 'linear-gradient(135deg, #1c1a15 0%, #0d0d0d 100%)' }}>
-        <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">New</p>
-        <h2 className="font-extrabold text-[24px] mt-2 leading-tight text-white">Mix &amp; Match Weekly Plan</h2>
-        <p className="text-gold font-semibold text-[15px] mt-1">You pick the service — every single week.</p>
+        <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">{t('offers.mixMatchNew')}</p>
+        <h2 className="font-extrabold text-[24px] mt-2 leading-tight text-white">{t('offers.mixMatchTitle')}</h2>
+        <p className="text-gold font-semibold text-[15px] mt-1">{t('offers.mixMatchTagline')}</p>
         <p className="mt-2 text-[15px] text-neutral-300 leading-relaxed">
-          <b className="text-gold text-[22px]">4 services</b> for <b className="text-gold text-[22px]">${price}</b>/month
+          <b className="text-gold text-[22px]">{t('offers.mixMatchServices4')}</b> for <b className="text-gold text-[22px]">${showPrice}</b>{t('offers.perMonth')}
+          {hasDiscount && <span className="block text-[12px] font-bold text-green-400 mt-1">🎓 {t('offers.discountBadge')}</span>}
         </p>
         <p className="text-[13px] text-neutral-400 mt-1 leading-relaxed">
-          Haircut one week, shape up the next, beard after that — your call.
+          {t('offers.mixMatchDesc2')}
         </p>
         <p className="mt-3 inline-block text-[13px] font-extrabold text-white bg-gold rounded-full px-3.5 py-1.5">
-          Pick any 4 in any order — save 25% every month
+          {t('offers.mixMatchBadge')}
         </p>
       </div>
 
       <div className="card p-5 mt-4">
-        <h3 className="font-extrabold text-[16px]">Build your month</h3>
-        <p className="text-[13px] text-neutral-500 mt-1">Choose a service for each week. Your price updates live.</p>
+        <h3 className="font-extrabold text-[16px]">{t('offers.buildYourMonth')}</h3>
+        <p className="text-[13px] text-neutral-500 mt-1">{t('offers.chooseEachWeek')}</p>
         <div className="grid gap-4 mt-4">
           {picks.map((pick, week) => (
             <div key={week}>
-              <p className="text-[13px] font-bold text-neutral-700 mb-2">Week {week + 1}</p>
+              <p className="text-[13px] font-bold text-neutral-700 mb-2">{t('offers.week').replace('{n}', String(week + 1))}</p>
               <div className="flex flex-wrap gap-2">
                 {services.map((s) => (
                   <button
@@ -253,34 +259,33 @@ function MixMatchBuilder({ token, onError }: { token: string; onError: (msg: str
           ))}
         </div>
         <div className="flex items-baseline justify-between mt-5 pt-4 border-t border-neutral-100">
-          <span className="text-[14px] font-semibold text-neutral-500">Your monthly price</span>
+          <span className="text-[14px] font-semibold text-neutral-500">{t('offers.yourMonthlyPrice')}</span>
           <span className="font-extrabold text-[28px] gold-text">
             {sum > 0 && <span className="line-through text-neutral-300 text-[17px] font-semibold mr-2">${sum}</span>}
-            ${price}<span className="text-[14px] text-neutral-400 font-semibold">/mo</span>
+            ${showPrice}<span className="text-[14px] text-neutral-400 font-semibold">{t('offers.perMo')}</span>
           </span>
         </div>
         <ol className="mt-4 grid gap-2.5 text-[14px] text-neutral-600 leading-relaxed list-none">
-          <li><b className="text-gold">1.</b> Pick your 4 services and subscribe — charged monthly.</li>
-          <li><b className="text-gold">2.</b> Each week, show your membership code — your barber scans it.</li>
-          <li><b className="text-gold">3.</b> One scan = that week&apos;s service. Skip a week and it&apos;s gone.</li>
+          <li><b className="text-gold">1.</b> {t('offers.mixStep1')}</li>
+          <li><b className="text-gold">2.</b> {t('offers.mixStep2')}</li>
+          <li><b className="text-gold">3.</b> {t('offers.mixStep3')}</li>
         </ol>
         <button
           onClick={subscribeCustom}
           disabled={busy || !services.length}
           className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
         >
-          {busy ? 'Starting…' : `Subscribe — $${price}/month`}
+          {busy ? t('offers.starting') : t('offers.subscribe').replace('${price}', String(showPrice))}
         </button>
         <p className="text-[12px] text-neutral-400 text-center mt-2.5 leading-relaxed">
-          Renews automatically each month. Cancel anytime from here.
+          {t('offers.renewsMonthly')}
         </p>
       </div>
     </div>
   );
 }
 
-function WeekDot({ week }: { week: Week }) {
-  const base = 'w-11 h-11 rounded-full flex items-center justify-center text-[13px] font-extrabold border-2 transition-all';
+function WeekDot({ week }: { week: Week }) {  const base = 'w-11 h-11 rounded-full flex items-center justify-center text-[13px] font-extrabold border-2 transition-all';
   if (week.state === 'used')
     return (
       <div className="flex flex-col items-center gap-1.5">
@@ -312,6 +317,7 @@ function WeekDot({ week }: { week: Week }) {
 
 function OffersInner() {
   const { checked, token } = useCustomerAuth();
+  const { t } = useLang();
   const searchParams = useSearchParams();
   const [data, setData] = useState<StatusResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -319,37 +325,44 @@ function OffersInner() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
+  // 15% student/military discount (approved by the owner).
+  const [hasDiscount, setHasDiscount] = useState(false);
+  const disc = (p: number) => hasDiscount ? Math.round(p * 0.85 * 100) / 100 : p;
 
   function load() {
     if (!token) return;
     fetch('/api/memberships/status', { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => setData(d))
-      .catch(() => setError('Could not load the offer.'))
+      .catch(() => setError(t('offers.couldNotLoad')))
       .finally(() => setLoading(false));
+    fetch('/api/customer/discount', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.discount?.status === 'approved') setHasDiscount(true); })
+      .catch(() => {});
   }
 
   useEffect(() => {
     if (!checked) return;
     // Returning from Stripe Checkout — reconcile the subscription.
     if (searchParams.get('checkout') === 'success' && token) {
-      setNotice('Confirming your subscription…');
+      setNotice(t('offers.confirming'));
       fetch('/api/memberships/sync', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((r) => r.json())
         .then((d) => {
-          if (d.ok) setNotice('Welcome to your plan!');
-          else setNotice(d.error || 'Subscription not found yet — pull to refresh.');
+          if (d.ok) setNotice(t('offers.welcome'));
+          else setNotice(d.error || t('offers.notFoundRefresh'));
         })
-        .catch(() => setNotice('Could not confirm — pull to refresh.'))
+        .catch(() => setNotice(t('offers.couldNotConfirm')))
         .finally(() => {
           window.history.replaceState(null, '', '/customer/offers');
           load();
         });
     } else {
-      if (searchParams.get('checkout') === 'cancelled') setNotice('Checkout was cancelled — no charge was made.');
+      if (searchParams.get('checkout') === 'cancelled') setNotice(t('offers.cancelledNoCharge'));
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -365,10 +378,10 @@ function OffersInner() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Could not start the subscription.');
+      if (!r.ok) throw new Error(d.error || t('offers.couldNotStartSub'));
       window.location.href = d.url;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the subscription.');
+      setError(e instanceof Error ? e.message : t('offers.couldNotStartSub'));
       setBusy(false);
     }
   }
@@ -384,16 +397,16 @@ function OffersInner() {
         body: JSON.stringify({ membershipId, action }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Could not update the plan.');
+      if (!r.ok) throw new Error(d.error || t('offers.couldNotUpdatePlan'));
       setConfirmCancel(null);
       setNotice(
         action === 'cancel'
-          ? 'Plan will end after your paid period. Your remaining weeks still work.'
-          : 'Your plan is active again!'
+          ? t('offers.planEndsAfterPeriod')
+          : t('offers.planActiveAgain')
       );
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not update the plan.');
+      setError(e instanceof Error ? e.message : t('offers.couldNotUpdatePlan'));
     }
     setBusy(false);
   }
@@ -408,12 +421,13 @@ function OffersInner() {
 
   const memberships = (data?.memberships ?? []).filter((x) => x.status === 'active' || x.status === 'past_due');
   const price = data?.plan.price ?? 120;
+  const showPrice = disc(price);
 
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
-      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> Branches</Link>
-      <h1 className="page-title mt-3 mb-1"><span className="gold-text">Offers</span></h1>
-      <p className="page-sub mb-6">Exclusive deals for MRC customers.</p>
+      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> {t('offers.backToBranches')}</Link>
+      <h1 className="page-title mt-3 mb-1"><span className="gold-text">{t('offers.title')}</span></h1>
+      <p className="page-sub mb-6">{t('offers.sub')}</p>
 
       {notice && (
         <p className="text-[13px] font-semibold text-green-800 bg-green-600/10 border border-green-600/25 rounded-xl px-4 py-3 mb-4 leading-relaxed fade-in">
@@ -442,35 +456,36 @@ function OffersInner() {
 
       {memberships.length > 0 && (
         <div className="mb-4">
-          <h2 className="font-extrabold text-[19px]"><span className="gold-text">Add another plan</span></h2>
-          <p className="page-sub mt-1">For your son, brother, or anyone — each plan gets its own weekly code.</p>
+          <h2 className="font-extrabold text-[19px]"><span className="gold-text">{t('offers.addAnotherPlan')}</span></h2>
+          <p className="page-sub mt-1">{t('offers.addAnotherDesc')}</p>
         </div>
       )}
 
       <div className="fade-in">
         <div className="relative overflow-hidden rounded-3xl p-6 border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)]"
           style={{ background: 'linear-gradient(135deg, #1c1a15 0%, #0d0d0d 100%)' }}>
-          <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">Limited offer</p>
-          <h2 className="font-extrabold text-[24px] mt-2 leading-tight text-white">Monthly Haircut Plan</h2>
-          <p className="text-gold font-semibold text-[15px] mt-1">Look sharp every week — for less.</p>
+          <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">{t('offers.limitedOffer')}</p>
+          <h2 className="font-extrabold text-[24px] mt-2 leading-tight text-white">{t('offers.monthlyPlan')}</h2>
+          <p className="text-gold font-semibold text-[15px] mt-1">{t('offers.lookSharp')}</p>
           <p className="mt-2 text-[15px] text-neutral-300 leading-relaxed">
-            <b className="text-gold text-[22px]">4 haircuts</b> for <b className="text-gold text-[22px]">${price}</b>/month
-            <span className="text-neutral-500 line-through text-[15px]"> instead of $160</span>
+            <b className="text-gold text-[22px]">{t('offers.haircuts4')}</b> for <b className="text-gold text-[22px]">${showPrice}</b>{t('offers.perMonth')}
+            <span className="text-neutral-500 line-through text-[15px]"> {t('offers.insteadOf')}</span>
+            {hasDiscount && <span className="block text-[12px] font-bold text-green-400 mt-1">🎓 {t('offers.discountBadge')}</span>}
           </p>
           <div className="mt-4 grid gap-2 text-[13.5px] text-neutral-300">
-            <p className="flex gap-2"><span className="text-gold">✓</span> One haircut every week — just show your code</p>
-            <p className="flex gap-2"><span className="text-gold">✓</span> Charged monthly, cancel anytime</p>
-            <p className="flex gap-2"><span className="text-gold">✓</span> A week you skip doesn&apos;t carry over</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkOneHaircut')}</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkChargedMonthly')}</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkSkipWeek')}</p>
           </div>
         </div>
 
         <div className="card p-5 mt-4">
-          <h3 className="font-extrabold text-[16px]">How it works</h3>
+          <h3 className="font-extrabold text-[16px]">{t('offers.howItWorks')}</h3>
           <ol className="mt-3 grid gap-2.5 text-[14px] text-neutral-600 leading-relaxed list-none">
-            <li><b className="text-gold">1.</b> Subscribe — ${price} is charged monthly to your card.</li>
-            <li><b className="text-gold">2.</b> Book any appointment with your plan — no deposit.</li>
-            <li><b className="text-gold">3.</b> At the shop, tap <b>Show membership code</b> and your barber scans it.</li>
-            <li><b className="text-gold">4.</b> One scan = one haircut. Skip a week and it&apos;s gone.</li>
+            <li><b className="text-gold">1.</b> {t('offers.step1').replace('${price}', String(showPrice))}</li>
+            <li><b className="text-gold">2.</b> {t('offers.step2')}</li>
+            <li><b className="text-gold">3.</b> {t('offers.step3')}</li>
+            <li><b className="text-gold">4.</b> {t('offers.step4')}</li>
           </ol>
         </div>
 
@@ -479,26 +494,26 @@ function OffersInner() {
           disabled={busy}
           className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
         >
-          {busy ? 'Starting…' : `Subscribe — $${price}/month`}
+          {busy ? t('offers.starting') : t('offers.subscribe').replace('${price}', String(price))}
         </button>
         <p className="text-[12px] text-neutral-400 text-center mt-2.5 leading-relaxed">
-          Renews automatically each month. Cancel anytime from here.
+          {t('offers.renewsMonthly')}
         </p>
 
         {/* Mix & Match plan — same weekly mechanics, customer picks the services. */}
-        {token && <MixMatchBuilder token={token} onError={setError} />}
+        {token && <MixMatchBuilder token={token} onError={setError} hasDiscount={hasDiscount} />}
       </div>
 
       {/* Gift a haircut promo */}
       <Link href="/customer/gifts" className="card p-5 mt-4 block border-2 border-gold/60 fade-in">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="font-extrabold text-[17px]">🎁 Gift a haircut</p>
+            <p className="font-extrabold text-[17px]">🎁 {t('offers.giftTitle')}</p>
             <p className="text-[13px] text-neutral-500 mt-1 leading-relaxed">
-              Buy a haircut for your son, friend, or brother — send them the code on WhatsApp.
+              {t('offers.giftDesc')}
             </p>
           </div>
-          <span className="gold-btn rounded-xl px-4 py-2.5 font-bold text-[14px] shrink-0">Gift →</span>
+          <span className="gold-btn rounded-xl px-4 py-2.5 font-bold text-[14px] shrink-0">{t('offers.giftBtn')}</span>
         </div>
       </Link>
     </main>

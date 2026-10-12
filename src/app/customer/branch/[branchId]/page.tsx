@@ -10,6 +10,7 @@ import DirectionsButton from '@/components/DirectionsButton';
 import { useCustomerAuth } from '@/components/CustomerAuth';
 import ReviewForm from '@/components/ReviewForm';
 import BarberProfileModal from '@/components/BarberProfileModal';
+import { useLang } from '@/components/LanguageContext';
 import { withSalon } from '../../salonQuery';
 import type { PublicBarber, Review, Branch } from '@/lib/types';
 
@@ -25,6 +26,7 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export default function BranchBarbers() {
+  const { t } = useLang();
   const { branchId } = useParams<{ branchId: string }>();
   const { checked, token } = useCustomerAuth();
   const [barbers, setBarbers] = useState<PublicBarber[]>([]);
@@ -92,7 +94,7 @@ export default function BranchBarbers() {
       ) : (
       <>
       <div className="flex items-center justify-between gap-3">
-        <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> Branches</Link>
+        <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> {t('branch.backToBranches')}</Link>
         {branch && (
           <DirectionsButton
             lat={branch.lat}
@@ -103,9 +105,9 @@ export default function BranchBarbers() {
         )}
       </div>
       <h1 className="page-title mt-3 mb-1">
-        <span className="gold-text">Choose your barber</span>
+        <span className="gold-text">{t('branch.chooseBarber')}</span>
       </h1>
-      <p className="page-sub mb-5">Master craftsmen at this branch.</p>
+      <p className="page-sub mb-5">{t('branch.masterCraftsmen')}</p>
 
       {loading && <BarberListSkeleton />}
 
@@ -114,9 +116,9 @@ export default function BranchBarbers() {
           <div className="mx-auto w-14 h-14 rounded-full bg-gold/10 border border-gold/40 flex items-center justify-center text-gold mb-4">
             <PoleIcon size={26} />
           </div>
-          <p className="font-bold text-[16px]">No barbers listed here yet</p>
+          <p className="font-bold text-[16px]">{t('branch.noBarbers')}</p>
           <p className="text-sm text-neutral-600 mt-1.5 leading-relaxed max-w-xs mx-auto">
-            Our lineup is being set up. The shop owner can add barbers anytime from the owner panel.
+            {t('branch.lineupSetup')}
           </p>
         </div>
       )}
@@ -127,7 +129,7 @@ export default function BranchBarbers() {
             <div className="flex gap-4">
               <button
                 onClick={() => openProfile(b)}
-                aria-label={`View ${b.name}'s profile`}
+                aria-label={t('branch.viewProfile').replace('{name}', b.name)}
                 className="shrink-0 rounded-full transition-transform active:scale-95"
               >
                 {b.photoUrl ? (
@@ -159,7 +161,7 @@ export default function BranchBarbers() {
                 >
                   <Stars rating={b.avgRating ?? 0} />
                   <span className="underline underline-offset-2 decoration-gold/40">
-                    {b.reviewCount} review{b.reviewCount === 1 ? '' : 's'}
+                    {t('book.reviews').replace('{n}', String(b.reviewCount)).replace('{s}', b.reviewCount === 1 ? '' : 's')}
                     {b.avgRating !== null && <span className="text-neutral-600 no-underline"> · {b.avgRating.toFixed(1)}</span>}
                   </span>
                 </button>
@@ -168,9 +170,9 @@ export default function BranchBarbers() {
 
             {openReviews === b.id && (
               <div className="mt-4 border-t border-gold/10 pt-3 grid gap-2">
-                {loadingReviews && <p className="text-sm text-neutral-500">Loading reviews…</p>}
+                {loadingReviews && <p className="text-sm text-neutral-500">{t('branch.loadingReviews')}</p>}
                 {!loadingReviews && reviews.length === 0 && (
-                  <p className="text-sm text-neutral-500">No reviews yet.</p>
+                  <p className="text-sm text-neutral-500">{t('branch.noReviews')}</p>
                 )}
                 {reviews.map((r) => (
                   <div key={r.id} className="bg-[#f4edda] border border-[#e6dabf] rounded-xl p-3">
@@ -197,7 +199,7 @@ export default function BranchBarbers() {
               href={`/customer/book/${b.id}?branchId=${branchId}`}
               className="gold-btn rounded-2xl px-4 py-3 text-center flex items-center justify-center gap-2 mt-4 text-[15px]"
             >
-              Book with {b.name.split(' ')[0]} <ArrowRightIcon size={18} />
+              {t('branch.bookWith').replace('{name}', b.name.split(' ')[0])} <ArrowRightIcon size={18} />
             </Link>
           </div>
         ))}

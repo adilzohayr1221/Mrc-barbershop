@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLang } from '@/components/LanguageContext';
 
 export interface ChatMsg {
   id: string;
@@ -38,6 +39,7 @@ export function ChatModal({
   getToken: () => string;
   onClose: () => void;
 }) {
+  const { t } = useLang();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -105,15 +107,15 @@ export function ChatModal({
   }, [bookingId]);
 
   const send = async () => {
-    const t = text.trim();
-    if (!t || sending) return;
+    const msg = text.trim();
+    if (!msg || sending) return;
     setSending(true);
     setSendError('');
     try {
       const r = await fetch(`/api/chats/${bookingId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current()}` },
-        body: JSON.stringify({ text: t.slice(0, 500) }),
+        body: JSON.stringify({ text: msg.slice(0, 500) }),
       });
       const j = await r.json().catch(() => null);
       if (r.ok) {
@@ -129,17 +131,17 @@ export function ChatModal({
         }
         scrollBottom();
       } else {
-        setSendError(j?.error || 'Could not send. Try again.');
+        setSendError(j?.error || t('chat.tryAgain'));
       }
     } catch {
-      setSendError('Could not send. Check your connection.');
+      setSendError(t('chat.couldNotSend'));
     } finally {
       setSending(false);
     }
   };
 
   const removeMessage = async (messageId: string) => {
-    if (!confirm('Delete this message?')) return;
+    if (!confirm(t('chat.deleteMessage'))) return;
     setDeleting(true);
     try {
       const r = await fetch(`/api/chats/${bookingId}`, {
@@ -192,10 +194,10 @@ export function ChatModal({
 
         <div ref={boxRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
           {loading ? (
-            <p className="text-center text-neutral-400 text-sm mt-8">Loading messages…</p>
+            <p className="text-center text-neutral-400 text-sm mt-8">{t('chat.loading')}</p>
           ) : messages.length === 0 ? (
             <p className="text-center text-neutral-400 text-sm mt-8 leading-relaxed">
-              No messages yet.<br />Say hi — e.g. “I’m running 10 min late.”
+              {t('chat.noMessages')}
             </p>
           ) : (
             messages.map((m) => {
@@ -224,7 +226,7 @@ export function ChatModal({
                           disabled={deleting}
                           className="text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-full px-3 py-1.5 disabled:opacity-50"
                         >
-                          {deleting ? '…' : '🗑 Delete'}
+                          {deleting ? '…' : t('barber.chat.delete')}
                         </button>
                       </div>
                     )}
@@ -248,7 +250,7 @@ export function ChatModal({
                 if (e.key === 'Enter') send();
               }}
               onFocus={scrollBottom}
-              placeholder="Type a message…"
+              placeholder={t('chat.typeMessage')}
               className="flex-1 min-w-0 rounded-full border border-neutral-300 px-4 py-2.5 text-[16px] bg-white focus:outline-none focus:border-gold"
             />
             <button
@@ -256,7 +258,7 @@ export function ChatModal({
               disabled={!text.trim() || sending}
               className="btn-gold rounded-full px-5 py-2.5 text-[14px] font-bold disabled:opacity-40 shrink-0 min-h-[44px]"
             >
-              {sending ? '…' : 'Send'}
+              {sending ? '…' : t('thanks.send')}
             </button>
           </div>
         </div>

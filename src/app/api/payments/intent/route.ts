@@ -3,6 +3,7 @@ import { getBarbers, getServices, getBranches, getCustomer, saveCustomer, listBo
 import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
+import { discountPrice } from '@/lib/discount';
 import type { WorkingHours } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'This time was just booked. Please pick another.' }, { status: 409 });
   }
 
-  const deposit = depositFor(service.price);
+  // Approved student/military customers pay the discounted price (server-side).
+  const finalPrice = discountPrice(service.price, customer);
+  const deposit = depositFor(finalPrice);
   const amountCents = toCents(deposit);
   if (amountCents < 50) {
     return NextResponse.json({ error: 'This service cannot be booked with a deposit.' }, { status: 400 });
@@ -108,8 +111,8 @@ export async function POST(req: Request) {
       ok: true,
       clientSecret: intent.client_secret,
       amount: deposit,
-      price: service.price,
-      remaining: Math.round((service.price - deposit) * 100) / 100,
+      price: finalPrice,
+      remaining: Math.round((finalPrice - deposit) * 100) / 100,
     });
   } catch (e) {
     console.error('Stripe PaymentIntent failed', e);

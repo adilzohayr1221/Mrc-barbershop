@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { ArrowLeftIcon, LockIcon } from '@/components/Icons';
+import { useLang } from '@/components/LanguageContext';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
@@ -11,6 +12,7 @@ const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY 
 // If an iPhone user opened this page in Chrome or an in-app browser
 // (Instagram, TikTok, WhatsApp…), Apple Pay can't appear — nudge them to Safari.
 function SafariNudge() {
+  const { t } = useLang();
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -31,9 +33,8 @@ function SafariNudge() {
   return (
     <div className="mb-4 rounded-2xl border border-gold/50 bg-gold/10 px-4 py-3 text-[13px] leading-relaxed">
       <p>
-        <span className="font-bold">🍎 iPhone user?</span> Apple Pay only works in{' '}
-        <b>Safari</b>. You're not in Safari right now — open this page there to pay
-        with Apple Pay.
+        <span className="font-bold">{t('barber.payment.safari_title')}</span>{' '}
+        {t('barber.payment.safari_body')}
       </p>
       <button
         type="button"
@@ -45,7 +46,7 @@ function SafariNudge() {
         }}
         className="mt-2 underline underline-offset-2 font-semibold text-gold"
       >
-        {copied ? 'Link copied ✓ — paste it in Safari' : 'Copy this page link'}
+        {copied ? t('notif.linkCopied') : t('notif.copyLink')}
       </button>
     </div>
   );
@@ -76,6 +77,7 @@ function PayForm({
   const stripe = useStripe();
   const elements = useElements();
   const [busy, setBusy] = useState(false);
+  const { t } = useLang();
 
   async function pay() {
     if (!stripe || !elements) return;
@@ -86,7 +88,7 @@ function PayForm({
       redirect: 'if_required',
     });
     if (error) {
-      onError(error.message || 'Payment failed. Please check your card and try again.');
+      onError(error.message || t('code.paymentFailed'));
       setBusy(false);
       return;
     }
@@ -95,7 +97,7 @@ function PayForm({
       hapticSuccess();
       onSuccess(paymentIntent.id);
     } else {
-      onError('Payment did not complete. Please try again.');
+      onError(t('code.paymentIncomplete'));
       setBusy(false);
     }
   }
@@ -103,23 +105,23 @@ function PayForm({
   return (
     <div className="grid gap-5 fade-in">
       <div className="card p-5">
-        <h2 className="font-extrabold text-[17px]">Order summary</h2>
+        <h2 className="font-extrabold text-[17px]">{t('barber.payment.order_summary')}</h2>
         <div className="mt-3 grid gap-2 text-[15px] bg-[#f7f2e2] border border-[#e6dabf] rounded-2xl p-4">
-          <p className="flex justify-between gap-3"><span className="text-neutral-500">Service</span><b className="text-right">{summary.serviceName}</b></p>
+          <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.payment.service')}</span><b className="text-right">{summary.serviceName}</b></p>
           {summary.barberName && (
-            <p className="flex justify-between gap-3"><span className="text-neutral-500">Barber</span><b className="text-right">{summary.barberName}</b></p>
+            <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.payment.barber')}</span><b className="text-right">{summary.barberName}</b></p>
           )}
           {summary.dateLabel && summary.time && (
-            <p className="flex justify-between gap-3"><span className="text-neutral-500">When</span><b className="text-right">{summary.dateLabel} at {summary.time}</b></p>
+            <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.payment.when')}</span><b className="text-right">{summary.dateLabel} {t('receipt.at')} {summary.time}</b></p>
           )}
-          <p className="flex justify-between gap-3"><span className="text-neutral-500">Service price</span><b className="text-right">${summary.totalPrice.toFixed(2)}</b></p>
+          <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.payment.service_price')}</span><b className="text-right">${summary.totalPrice.toFixed(2)}</b></p>
           <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
-            <span className="font-bold">{summary.amountLabel ?? 'Deposit due now'}</span>
+            <span className="font-bold">{summary.amountLabel ?? t('barber.payment.due_now_default')}</span>
             <b className="text-gold text-[18px]">${amount.toFixed(2)}</b>
           </p>
           {summary.totalPrice - amount > 0.005 && (
             <p className="text-[13px] text-neutral-500 text-right -mt-1">
-              Remaining ${(summary.totalPrice - amount).toFixed(2)} is paid at the shop.
+              {t('appt.payAtShop').replace('{amount}', '$' + (summary.totalPrice - amount).toFixed(2))}
             </p>
           )}
           {summary.totalPrice - amount > 0.005 && (
@@ -134,18 +136,18 @@ function PayForm({
 
       <div className="card p-5">
         <h2 className="font-extrabold text-[17px] flex items-center gap-2">
-          Payment <LockIcon size={14} className="text-gold" />
+          {t('barber.payment.title')} <LockIcon size={14} className="text-gold" />
         </h2>
-        <p className="text-[13px] text-neutral-500 mt-1 mb-4">Secure payment via Stripe.</p>
+        <p className="text-[13px] text-neutral-500 mt-1 mb-4">{t('barber.payment.secure')}</p>
         <SafariNudge />
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
 
       <button onClick={pay} disabled={busy || !stripe} className="gold-btn rounded-2xl px-6 py-4 text-[17px]">
-        {busy ? 'Processing…' : `Pay $${amount.toFixed(2)}`}
+        {busy ? t('barber.payment.processing') : t('barber.payment.pay').replace('${amount}', amount.toFixed(2))}
       </button>
       <button onClick={onBack} disabled={busy} className="flex items-center justify-center gap-1.5 text-sm text-neutral-500 font-medium -mt-2">
-        <ArrowLeftIcon size={14} /> Back to details
+        <ArrowLeftIcon size={14} /> {t('barber.payment.back')}
       </button>
     </div>
   );

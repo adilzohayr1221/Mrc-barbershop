@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLang } from '@/components/LanguageContext';
 
 export interface TeamChatMsg {
   id: string;
@@ -35,13 +36,15 @@ export function TeamChatModal({
   getToken,
   onClose,
   readOnly = false,
-  subtitle = 'All barbers',
+  subtitle,
 }: {
   getToken: () => string;
   onClose: () => void;
   readOnly?: boolean; // owner ghost mode: can read, cannot send
   subtitle?: string;
 }) {
+  const { t } = useLang();
+  const sub = subtitle ?? t('barber.teamchat.all_barbers');
   const [messages, setMessages] = useState<TeamChatMsg[]>([]);
   const [myId, setMyId] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -127,15 +130,15 @@ export function TeamChatModal({
   }, []);
 
   const send = async () => {
-    const t = text.trim();
-    if (!t || sending) return;
+    const msg = text.trim();
+    if (!msg || sending) return;
     // Optimistic: show the message instantly, sync with the server after.
     const tempId = `temp-${Date.now()}`;
     const optimistic: TeamChatMsg = {
       id: tempId,
       senderBarberId: myId ?? 'me',
       senderName: '',
-      text: t.slice(0, 500),
+      text: msg.slice(0, 500),
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimistic]);
@@ -147,7 +150,7 @@ export function TeamChatModal({
       const r = await fetch('/api/team-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenRef.current()}` },
-        body: JSON.stringify({ text: t.slice(0, 500) }),
+        body: JSON.stringify({ text: msg.slice(0, 500) }),
       });
       if (r.ok) {
         // Use the server-confirmed message directly — the Blob read after a
@@ -168,11 +171,11 @@ export function TeamChatModal({
       } else {
         const j = await r.json().catch(() => null);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        setSendError(j?.error || 'Could not send. Try again.');
+        setSendError(j?.error || t('barber.teamchat.send_error_retry'));
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setSendError('Could not send. Check your connection.');
+      setSendError(t('barber.teamchat.send_error'));
     } finally {
       setSending(false);
     }
@@ -196,8 +199,8 @@ export function TeamChatModal({
             💬
           </div>
           <div className="flex-1 min-w-0">
-            <b className="block text-[15px] truncate">Team chat</b>
-            <span className="block text-[11px] text-neutral-500 truncate">{subtitle}</span>
+            <b className="block text-[15px] truncate">{t('barber.teamchat.title')}</b>
+            <span className="block text-[11px] text-neutral-500 truncate">{sub}</span>
           </div>
           <button
             onClick={onClose}
@@ -210,11 +213,11 @@ export function TeamChatModal({
 
         <div ref={boxRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
           {loading ? (
-            <p className="text-center text-neutral-400 text-sm mt-8">Loading messages…</p>
+            <p className="text-center text-neutral-400 text-sm mt-8">{t('barber.teamchat.loading')}</p>
           ) : messages.length === 0 ? (
             <p className="text-center text-neutral-400 text-sm mt-8 leading-relaxed">
               No messages yet.<br />
-              {readOnly ? 'The barbers have not written anything.' : 'Say hi to the team 👋'}
+              {readOnly ? t('barber.teamchat.empty') : t('barber.teamchat.greeting')}
             </p>
           ) : (
             messages.map((m) => {
@@ -253,7 +256,7 @@ export function TeamChatModal({
                   if (e.key === 'Enter') send();
                 }}
                 onFocus={scrollBottom}
-                placeholder="Message the team…"
+                placeholder={t('barber.teamchat.placeholder')}
                 className="flex-1 min-w-0 rounded-full border border-neutral-300 px-4 py-2.5 text-[16px] bg-white focus:outline-none focus:border-gold"
               />
               <button
@@ -261,7 +264,7 @@ export function TeamChatModal({
                 disabled={!text.trim() || sending}
                 className="gold-btn rounded-full px-5 py-2.5 text-[14px] font-bold disabled:opacity-40 shrink-0 min-h-[44px]"
               >
-                {sending ? '…' : 'Send'}
+                {sending ? '…' : t('thanks.send')}
               </button>
             </div>
           </div>

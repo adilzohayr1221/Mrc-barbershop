@@ -3,6 +3,7 @@ import { getBarbers, getServices, getBranches, getCustomer, listBookings, saveBo
 import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
+import { discountPrice } from '@/lib/discount';
 import { buildWeeks, getMembershipById, listActiveMemberships } from '@/lib/membership';
 import { sendPushToUser } from '@/lib/push';
 import type { Booking, WorkingHours } from '@/lib/types';
@@ -63,6 +64,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'This time was just booked. Please pick another.' }, { status: 409 });
   }
 
+  // Approved student/military customers book at the discounted price.
+  // The agreed total is stored on the booking so the remaining balance is
+  // always computed from it, never from the live service price.
+  const finalPrice = discountPrice(service.price, customer);
+
   // Monthly-plan booking: no deposit. The member's weekly haircut credit is
   // consumed later, when the barber scans the membership code at the shop.
   // One pending membership booking per plan at a time (no slot blocking).
@@ -117,6 +123,7 @@ export async function POST(req: Request) {
       amountPaid: 0,
       stripeCustomerId: null,
       stripePaymentMethodId: null,
+      servicePrice: finalPrice,
     };
     await saveBooking(booking);
     // The barber gets a push the moment he has a new haircut.
@@ -130,7 +137,7 @@ export async function POST(req: Request) {
         ok: true,
         booking: {
           id: booking.id, date, time, barberName: barber.name, serviceName: service.name,
-          price: service.price, depositPaid: 0, membership: true, branchAddress: branch.address,
+          price: finalPrice, depositPaid: 0, membership: true, branchAddress: branch.address,
         },
       },
       { status: 201 }
@@ -145,7 +152,7 @@ export async function POST(req: Request) {
   if (typeof paymentIntentId !== 'string' || !paymentIntentId.startsWith('pi_')) {
     return NextResponse.json({ error: 'Payment is required to book.' }, { status: 402 });
   }
-  const expectedCents = toCents(depositFor(service.price));
+  const expectedCents = toCents(depositFor(finalPrice));
   let amountPaid: number;
   let stripeCustomerId: string | null = null;
   let stripePaymentMethodId: string | null = null;
@@ -191,6 +198,7 @@ export async function POST(req: Request) {
     amountPaid,
     stripeCustomerId,
     stripePaymentMethodId,
+    servicePrice: finalPrice,
   };
   await saveBooking(booking);
   // The barber gets a push the moment he has a new haircut.
@@ -200,7 +208,7 @@ export async function POST(req: Request) {
     url: '/barber/dashboard',
   });
   return NextResponse.json(
-    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: service.price, depositPaid: amountPaid, branchAddress: branch.address } },
+    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address } },
     { status: 201 }
   );
 }

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { ArrowLeftIcon, CalendarIcon, MapPinIcon, ScissorsIcon, ClockIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
 import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useLang } from '@/components/LanguageContext';
 import { CollectCodeButton } from '@/components/CollectCodeButton';
 import { ChatModal } from '@/components/ChatModal';
 import { formatTime12h } from '@/lib/format';
@@ -47,6 +48,7 @@ function fmtShort(iso: string) {
 }
 
 function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: () => string; unread: number; onChat: () => void }) {
+  const { t } = useLang();
   const inactive = b.status !== 'booked';
   const remaining = b.remaining ?? 0;
   const showCode = !inactive && remaining > 0 && b.hasSavedCard;
@@ -61,11 +63,11 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
           {b.serviceName}{b.price != null && <span className="text-gold font-semibold"> · ${b.price}</span>}
         </b>
         {paidInFull ? (
-          <span className="chip !border-green-600/40 !text-green-700 shrink-0">Paid in full</span>
+          <span className="chip !border-green-600/40 !text-green-700 shrink-0">{t('appt.paidInFull')}</span>
         ) : planRedeemed ? (
-          <span className="chip !border-green-600/40 !text-green-700 shrink-0">Paid via plan</span>
+          <span className="chip !border-green-600/40 !text-green-700 shrink-0">{t('appt.paidViaPlan')}</span>
         ) : planPending ? (
-          <span className="chip !border-gold/60 !text-gold shrink-0">Monthly plan</span>
+          <span className="chip !border-gold/60 !text-gold shrink-0">{t('appt.monthlyPlan')}</span>
         ) : (
           <span className="chip shrink-0">{fmtShort(b.date)} · {formatTime12h(b.time)}</span>
         )}
@@ -85,7 +87,7 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
             onClick={onChat}
             className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gold border border-gold/40 rounded-full px-3.5 py-2 min-h-[40px] card-hover"
           >
-            💬 Chat with {b.barberName}
+            💬 {t('appt.chatWith').replace('{name}', b.barberName)}
             {unread > 0 && (
               <span className="bg-red-600 text-white text-[10px] font-extrabold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                 {unread}
@@ -96,7 +98,7 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
             href={`/customer/receipt/${b.id}`}
             className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gold border border-gold/40 rounded-full px-3.5 py-2 min-h-[40px] card-hover"
           >
-            🧾 Receipt
+            🧾 {t('appt.receipt')}
           </Link>
         </div>
       )}
@@ -105,8 +107,8 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
       )}
       {!inactive && b.depositPaid != null && remaining > 0 && (
         <p className="text-[13px] text-neutral-500 mt-2">
-          Deposit paid <b className="text-neutral-700">${b.depositPaid.toFixed(2)}</b>
-          {' · '}remaining <b className="text-gold">${remaining.toFixed(2)}</b>
+          {t('appt.depositPaid')} <b className="text-neutral-700">${b.depositPaid.toFixed(2)}</b>
+          {' · '}{t('appt.remaining')} <b className="text-gold">${remaining.toFixed(2)}</b>
         </p>
       )}
       {showCode && (
@@ -119,12 +121,20 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
       )}
       {planPending && (
         <p className="text-[13px] text-neutral-500 mt-2 bg-[#f7f2e2] border border-[#e6dabf] rounded-xl px-3 py-2">
-          Covered by your <b className="text-gold">monthly plan</b> — show your membership code at the shop (Offers page).
+          {t('appt.coveredByPlan')}
         </p>
       )}
       {payAtShop && (
         <p className="text-[13px] text-neutral-500 mt-2 bg-[#f7f2e2] border border-[#e6dabf] rounded-xl px-3 py-2">
-          Remaining <b className="text-gold">${remaining.toFixed(2)}</b> is paid at the shop.
+          {(() => {
+            const parts = t('appt.payAtShop').split('{amount}');
+            const amt = `$${remaining.toFixed(2)}`;
+            return parts.length === 2 ? (
+              <>{parts[0]}<b className="text-gold">{amt}</b>{parts[1]}</>
+            ) : (
+              t('appt.payAtShop').replace('{amount}', amt)
+            );
+          })()}
         </p>
       )}
     </div>
@@ -133,6 +143,7 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
 
 function MyAppointmentsInner() {
   const { checked, token } = useCustomerAuth();
+  const { t } = useLang();
   const searchParams = useSearchParams();
   // After a fresh booking the confirmation screen links here with ?new=<id>.
   // Passed through as ?include= so a just-created booking shows instantly
@@ -184,9 +195,9 @@ function MyAppointmentsInner() {
 
   return (
     <main className="flex-1 px-4 py-6 max-w-2xl mx-auto w-full">
-      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> Branches</Link>
-      <h1 className="page-title mt-3 mb-1"><span className="gold-text">My appointments</span></h1>
-      <p className="page-sub mb-6">Your bookings, all in one place.</p>
+      <Link href="/customer" className="back-link"><ArrowLeftIcon size={16} /> {t('appt.backToBranches')}</Link>
+      <h1 className="page-title mt-3 mb-1"><span className="gold-text">{t('appt.title')}</span></h1>
+      <p className="page-sub mb-6">{t('appt.sub')}</p>
 
       {loading ? (
         <BranchPageSkeleton />
@@ -195,19 +206,19 @@ function MyAppointmentsInner() {
           <div className="mx-auto w-14 h-14 rounded-full bg-gold/10 border border-gold/40 flex items-center justify-center text-gold mb-4">
             <CalendarIcon size={26} />
           </div>
-          <p className="font-bold text-[16px]">No appointments yet</p>
+          <p className="font-bold text-[16px]">{t('appt.noAppointments')}</p>
           <p className="text-sm text-neutral-600 mt-1.5 leading-relaxed max-w-xs mx-auto">
-            Pick a branch and book your first cut — it will show up here.
+            {t('appt.pickBranch')}
           </p>
           <Link href="/customer" className="gold-btn rounded-2xl px-8 py-3 inline-block mt-6 text-[15px]">
-            Book now
+            {t('appt.bookNow')}
           </Link>
         </div>
       ) : (
         <div className="grid gap-6 fade-in">
           {upcoming.length > 0 && (
             <section>
-              <h2 className="label !mb-2.5">Upcoming</h2>
+              <h2 className="label !mb-2.5">{t('appt.upcoming')}</h2>
               <div className="grid gap-2.5">
                 {upcoming.map((b) => (
                   <BookingCard key={b.id} b={b} getToken={() => token ?? ''} unread={unread[b.id] ?? 0} onChat={() => setChatBooking(b)} />
@@ -221,7 +232,7 @@ function MyAppointmentsInner() {
       {chatBooking && (
         <ChatModal
           bookingId={chatBooking.id}
-          title={`Chat with ${chatBooking.barberName}`}
+          title={t('appt.chatWithTitle').replace('{name}', chatBooking.barberName)}
           subtitle={`${fmtShort(chatBooking.date)} · ${formatTime12h(chatBooking.time)}`}
           me="customer"
           getToken={() => token ?? ''}

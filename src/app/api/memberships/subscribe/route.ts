@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/auth';
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
 import { getOrCreatePlanPrice, ensureStripeCustomer } from '@/lib/membership';
+import { getOrCreateDiscountCoupon, hasApprovedDiscount } from '@/lib/discount';
+import { getCustomer } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,10 +22,17 @@ export async function POST(req: Request) {
     const stripeCustomerId = await ensureStripeCustomer(session.customerId);
     const priceId = await getOrCreatePlanPrice();
     const origin = new URL(req.url).origin;
+    // Approved student/military customers get 15% off the subscription
+    // via a Stripe coupon — applied by Stripe on every invoice, forever.
+    const customer = await getCustomer(session.customerId);
+    const discounts = hasApprovedDiscount(customer)
+      ? [{ coupon: await getOrCreateDiscountCoupon() }]
+      : undefined;
     const checkout = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       customer: stripeCustomerId,
       line_items: [{ price: priceId, quantity: 1 }],
+      ...(discounts ? { discounts } : {}),
       success_url: `${origin}/customer/offers?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/customer/offers?checkout=cancelled`,
       subscription_data: {

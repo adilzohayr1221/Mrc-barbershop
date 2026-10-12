@@ -49,18 +49,25 @@ export async function payoutToBarber(
   }
   const net = Math.round((amount - supplyDeducted) * 100) / 100;
 
+  // The barber bears Stripe's bank-payout fee (owner's rule). Stripe v2 +
+  // express dashboard requires the platform as fees_collector, so we deduct
+  // the $0.25 fee here before transferring.
+  const STRIPE_PAYOUT_FEE_USD = 0.25;
+  const netAfterFee = Math.max(0, Math.round((net - STRIPE_PAYOUT_FEE_USD) * 100) / 100);
+
   let transferId: string | undefined;
-  if (net > 0) {
+  if (netAfterFee > 0) {
     try {
       const transfer = await getStripe().transfers.create(
         {
-          amount: toCents(net),
+          amount: toCents(netAfterFee),
           currency: 'usd',
           destination: barber.stripeAccountId,
           description: opts.description,
           metadata: {
             barberId,
             barberName: barber.name,
+            payoutFeeUsd: STRIPE_PAYOUT_FEE_USD.toFixed(2),
             ...(supplyDeducted > 0 ? { supplyDeductedUsd: supplyDeducted.toFixed(2) } : {}),
             ...(opts.metadata ?? {}),
           },

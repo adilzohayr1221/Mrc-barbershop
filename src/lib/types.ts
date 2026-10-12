@@ -149,6 +149,9 @@ export interface Booking extends TenantScoped {
   membershipId?: string | null; // when booked with a plan: which plan it belongs to
   payoutTransferId?: string | null; // Stripe Transfer ID for the barber's payout
   payoutAmount?: number | null; // dollars transferred to the barber
+  servicePrice?: number | null; // total service price agreed at booking time
+    // (discounted when the customer had an approved discount) — the remaining
+    // balance is always computed from this, never from the live service price.
 }
 
 // Monthly haircut plan ("Offers"): $120/month for 4 haircuts — one per week.
@@ -289,6 +292,15 @@ export interface Customer extends TenantScoped {
   stripeCustomerId?: string | null; // Stripe customer for saved payment methods
   photoPath?: string | null; // profile photo in Blob (served via /api/photos/)
   favoriteBarberId?: string | null; // barber the customer starred as favorite
+  // Student/military 15% discount: the customer uploads an ID photo, the owner
+  // approves → 15% off all offers (bookings, plans, gifts). Missing/null = none.
+  discount?: {
+    type: 'student' | 'military';
+    status: 'pending' | 'approved' | 'rejected';
+    photoPath?: string | null; // ID photo under photos/
+    requestedAt: string; // ISO
+    decidedAt?: string | null; // ISO
+  } | null;
 }
 
 // Public-safe customer (never includes passwordHash)

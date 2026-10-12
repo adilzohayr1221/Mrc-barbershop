@@ -3,6 +3,7 @@ import { getServices, getCustomer } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, toCents } from '@/lib/stripe';
+import { discountPrice } from '@/lib/discount';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,13 +34,15 @@ export async function POST(req: Request) {
   const services = await getServices();
   const service = services.find((s) => s.id === serviceId && s.active);
   if (!service) return NextResponse.json({ error: 'Invalid service' }, { status: 400 });
-  if (service.price <= 0 || toCents(service.price) < 50) {
+  // Approved student/military customers buy gifts at the discounted price.
+  const finalPrice = discountPrice(service.price, customer);
+  if (finalPrice <= 0 || toCents(finalPrice) < 50) {
     return NextResponse.json({ error: 'This service cannot be gifted.' }, { status: 400 });
   }
 
   try {
     const intent = await getStripe().paymentIntents.create({
-      amount: toCents(service.price),
+      amount: toCents(finalPrice),
       currency: 'usd',
       automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
       metadata: {
@@ -48,9 +51,9 @@ export async function POST(req: Request) {
         customerId: session.customerId,
         serviceName: service.name,
       },
-      description: `Gift haircut — ${service.name} ($${service.price.toFixed(2)})`,
+      description: `Gift haircut — ${service.name} ($${finalPrice.toFixed(2)})`,
     });
-    return NextResponse.json({ ok: true, clientSecret: intent.client_secret, amount: service.price });
+    return NextResponse.json({ ok: true, clientSecret: intent.client_secret, amount: finalPrice });
   } catch (e) {
     console.error('Stripe gift PaymentIntent failed', e);
     return NextResponse.json({ error: 'Could not start the payment. Please try again.' }, { status: 502 });

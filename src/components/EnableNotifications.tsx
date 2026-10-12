@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLang } from '@/components/LanguageContext';
 
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4);
@@ -17,6 +18,7 @@ type State = 'checking' | 'unsupported' | 'denied' | 'off' | 'on';
  *  pass the role's session token getter. On iPhone it needs the app installed
  *  to the home screen (iOS 16.4+). */
 export function EnableNotifications({ getToken }: { getToken: () => string }) {
+  const { t } = useLang();
   const [state, setState] = useState<State>('checking');
   const [busy, setBusy] = useState(false);
 
@@ -101,13 +103,13 @@ export function EnableNotifications({ getToken }: { getToken: () => string }) {
         🔔
       </span>
       <span className="flex-1 min-w-0">
-        <b className="text-[15px] block">Notifications</b>
+        <b className="text-[15px] block">{t('notif.title')}</b>
         <span className="text-xs text-neutral-500 leading-relaxed block">
           {state === 'denied'
-            ? 'Blocked — allow notifications in your browser settings to turn them on.'
+            ? t('notif.blocked')
             : state === 'on'
-              ? 'On — you get booking and reminder alerts on this device.'
-              : 'Get booking and reminder alerts on this device.'}
+              ? t('notif.on')
+              : t('notif.getAlerts')}
         </span>
       </span>
       {state !== 'denied' && (
@@ -118,7 +120,7 @@ export function EnableNotifications({ getToken }: { getToken: () => string }) {
             state === 'on' ? 'bg-[#f4edda] border border-[#dccfae] text-neutral-700' : 'gold-btn'
           }`}
         >
-          {busy ? '…' : state === 'on' ? 'On' : 'Enable'}
+          {busy ? '…' : state === 'on' ? t('barber.notifications.enabled') : t('notif.enable')}
         </button>
       )}
     </div>

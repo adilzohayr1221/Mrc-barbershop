@@ -10,6 +10,7 @@ import { useCustomerAuth, customerToken } from '@/components/CustomerAuth';
 import BarberProfileModal from '@/components/BarberProfileModal';
 import PaymentStep from '@/components/PaymentStep';
 import { ChatModal } from '@/components/ChatModal';
+import { useLang } from '@/components/LanguageContext';
 import { withSalon } from '../../salonQuery';
 import type { PublicBarber, Service, Review } from '@/lib/types';
 import { formatTime12h } from '@/lib/format';
@@ -54,6 +55,7 @@ export default function BookPage() {
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branchId') || '';
   const { checked, name: accountName } = useCustomerAuth();
+  const { t } = useLang();
 
   const [barber, setBarber] = useState<PublicBarber | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -70,6 +72,9 @@ export default function BookPage() {
   const [done, setDone] = useState<Confirmation | null>(null);
   const [loading, setLoading] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  // 15% student/military discount (approved by the owner).
+  const [hasDiscount, setHasDiscount] = useState(false);
+  const disc = (p: number) => hasDiscount ? Math.round(p * 0.85 * 100) / 100 : p;
 
   // Prepay step: 'details' -> create Stripe PaymentIntent -> 'pay' -> confirm.
   const [step, setStep] = useState<'details' | 'pay'>('details');
@@ -169,7 +174,7 @@ export default function BookPage() {
           .filter((mm: { status: string; currentWeekAvailable: boolean }) => mm.status === 'active' && mm.currentWeekAvailable)
           .map((mm: { id: string; planName?: string; planPrice?: number }) => ({
             id: mm.id,
-            planName: mm.planName ?? 'Monthly Plan',
+            planName: mm.planName ?? t('book.monthlyPlan'),
             planPrice: mm.planPrice ?? 0,
           }));
         if (list.length) {
@@ -187,13 +192,17 @@ export default function BookPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetch('/api/customer/discount', { headers: { Authorization: `Bearer ${customerToken()}` }, cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (d.discount?.status === 'approved') setHasDiscount(true); })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barberId, branchId, checked, accountName]);
 
   async function continueToPayment() {
     setError('');
     if (!serviceId || !date || !time || name.trim().length < 2 || phone.replace(/\D/g, '').length < 7) {
-      setError('Please fill in service, day, time, name and phone.');
+      setError(t('book.fillAll'));
       return;
     }
     setBusy(true);
@@ -207,13 +216,13 @@ export default function BookPage() {
         body: JSON.stringify({ barberId, serviceId, branchId, date, time }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Could not start the payment');
+      if (!r.ok) throw new Error(d.error || t('book.couldNotStartPayment'));
       setClientSecret(d.clientSecret);
       setPayAmount(d.amount);
       setStep('pay');
       window.scrollTo({ top: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the payment');
+      setError(e instanceof Error ? e.message : t('book.couldNotStartPayment'));
     }
     setBusy(false);
   }
@@ -221,7 +230,7 @@ export default function BookPage() {
   async function bookWithMembership() {
     setError('');
     if (!serviceId || !date || !time || name.trim().length < 2 || phone.replace(/\D/g, '').length < 7) {
-      setError('Please fill in service, day, time, name and phone.');
+      setError(t('book.fillAll'));
       return;
     }
     setBusy(true);
@@ -235,11 +244,11 @@ export default function BookPage() {
         body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, useMembership: true, membershipId: planChoice || undefined }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Booking failed');
+      if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
       setDone(d.booking);
       window.scrollTo({ top: 0 });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Booking failed');
+      setError(e instanceof Error ? e.message : t('book.bookingFailed'));
     }
     setBusy(false);
   }
@@ -257,10 +266,10 @@ export default function BookPage() {
         body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Booking failed');
+      if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
       setDone(d.booking);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Booking failed');
+      setError(e instanceof Error ? e.message : t('book.bookingFailed'));
     }
     setBusy(false);
   }
@@ -279,43 +288,49 @@ export default function BookPage() {
         <div className="card p-8 mt-10 text-center relative overflow-hidden fade-in">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-gold to-transparent" />
           <CheckSealIcon size={64} className="mx-auto" />
-          <h1 className="page-title mt-4"><span className="gold-text">Booking confirmed</span></h1>
-          <p className="page-sub mt-1">We&apos;ll see you soon.</p>
+          <h1 className="page-title mt-4"><span className="gold-text">{t('book.confirmTitle')}</span></h1>
+          <p className="page-sub mt-1">{t('book.confirmSub')}</p>
           <div className="ornament w-40 mx-auto mt-5"><span className="ornament-diamond" /></div>
           <div className="mt-5 text-left grid gap-2.5 text-[15px] bg-[#f7f2e2] border border-[#e6dabf] rounded-2xl p-5">
-            <p><span className="text-neutral-500 text-sm block">Barber</span><b>{done.barberName}</b></p>
-            <p><span className="text-neutral-500 text-sm block">Service</span><b>{done.serviceName}</b> <span className="text-gold font-semibold">${done.price}</span></p>
+            <p><span className="text-neutral-500 text-sm block">{t('book.barber')}</span><b>{done.barberName}</b></p>
+            <p><span className="text-neutral-500 text-sm block">{t('book.service')}</span><b>{done.serviceName}</b> <span className="text-gold font-semibold">${done.price}</span></p>
             {done.membership ? (
-              <p><span className="text-neutral-500 text-sm block">Payment</span><b className="text-gold">Covered by your monthly plan</b><span className="text-neutral-500 text-sm"> · show your membership code at the shop</span></p>
+              <p><span className="text-neutral-500 text-sm block">{t('book.payment')}</span><b className="text-gold">{t('book.coveredByPlan')}</b><span className="text-neutral-500 text-sm"> · {t('book.showCodeAtShop')}</span></p>
             ) : typeof done.depositPaid === 'number' && (
-              <p><span className="text-neutral-500 text-sm block">Deposit paid now</span><b className="text-gold">${done.depositPaid.toFixed(2)}</b>
+              <p><span className="text-neutral-500 text-sm block">{t('book.depositPaidNow')}</span><b className="text-gold">${done.depositPaid.toFixed(2)}</b>
                 {done.price - done.depositPaid > 0.005 && (
-                  <span className="text-neutral-500 text-sm"> · ${(done.price - done.depositPaid).toFixed(2)} due at the shop</span>
+                  <span className="text-neutral-500 text-sm"> · ${(done.price - done.depositPaid).toFixed(2)} {t('book.dueAtShop')}</span>
                 )}
               </p>
             )}
-            <p><span className="text-neutral-500 text-sm block">When</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
-            <p><span className="text-neutral-500 text-sm block">Where</span><b>{done.branchAddress}</b></p>
+            <p><span className="text-neutral-500 text-sm block">{t('book.when')}</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
+            <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>{done.branchAddress}</b></p>
           </div>
           <div className="flex flex-col gap-3 justify-center mt-7">
+            <a
+              href={`/api/wallet/pass?type=service&ref=${done.id}`}
+              className="rounded-2xl px-8 py-3.5 inline-block text-[15px] font-semibold text-white bg-black"
+            >
+              􀣋 {t('book.addToAppleWallet')}
+            </a>
             <Link href={`/customer/receipt/${done.id}`} className="gold-btn rounded-2xl px-8 py-3.5 inline-block text-[15px]">
-              🧾 View receipt
+              🧾 {t('book.viewReceipt')}
             </Link>
             <Link href={`/customer/appointments?new=${done.id}`} className="gold-outline-btn rounded-2xl px-8 py-3.5 inline-block text-[15px]">
-              View my appointments
+              {t('book.viewMyAppointments')}
             </Link>
             <button onClick={() => setChatOpen(true)} className="gold-outline-btn rounded-2xl px-8 py-3.5 text-[15px]">
-              💬 Message {done.barberName}
+              💬 {t('book.messageBarber').replace('{name}', done.barberName)}
             </button>
             <Link href="/customer" className="gold-outline-btn rounded-2xl px-8 py-3.5 inline-block text-[15px]">
-              Book another
+              {t('book.bookAnother')}
             </Link>
           </div>
         </div>
         {chatOpen && (
           <ChatModal
             bookingId={done.id}
-            title={`Chat with ${done.barberName}`}
+            title={t('book.chatWith').replace('{name}', done.barberName)}
             subtitle={`${fmtDate(done.date)} at ${formatTime12h(done.time)}`}
             me="customer"
             getToken={() => customerToken() ?? ''}
@@ -328,7 +343,7 @@ export default function BookPage() {
 
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
-      <Link href={`/customer/branch/${branchId}`} className="back-link"><ArrowLeftIcon size={16} /> Barbers</Link>
+      <Link href={`/customer/branch/${branchId}`} className="back-link"><ArrowLeftIcon size={16} /> {t('book.backToBarbers')}</Link>
 
       {/* Barber identity header — tap the photo for the full profile */}
       <div className="card p-4 mt-3 flex items-center gap-4 fade-in">
@@ -352,21 +367,21 @@ export default function BookPage() {
           )}
         </button>
         <div className="min-w-0">
-          <p className="text-[11px] font-bold tracking-[0.14em] text-gold uppercase">Booking</p>
+          <p className="text-[11px] font-bold tracking-[0.14em] text-gold uppercase">{t('book.booking')}</p>
           <h1 className="text-[21px] font-extrabold tracking-tight text-[#17130a] truncate">
-            Book with {barber ? barber.name : '…'}
+            {barber ? t('book.bookWith').replace('{name}', barber.name) : '…'}
           </h1>
           {barber && (
             <button onClick={openProfile} className="flex items-center gap-1.5 mt-1">
               <Stars rating={barber.avgRating ?? 0} />
               <span className="text-[13px] text-neutral-500 font-medium">
-                {barber.avgRating !== null ? barber.avgRating.toFixed(1) : 'New'} · {barber.reviewCount} review{barber.reviewCount === 1 ? '' : 's'}
+                {barber.avgRating !== null ? barber.avgRating.toFixed(1) : t('book.new')} · {barber.reviewCount === 1 ? t('book.reviewOne').replace('{n}', String(barber.reviewCount)) : t('book.reviews').replace('{n}', String(barber.reviewCount)).replace('{s}', 's')}
               </span>
             </button>
           )}
         </div>
       </div>
-      <p className="page-sub mt-3 mb-5">Pick a service, day and time.</p>
+      <p className="page-sub mt-3 mb-5">{t('book.pickServiceDayTime')}</p>
 
       {loading ? (
         <BookFormSkeleton />
@@ -377,11 +392,11 @@ export default function BookPage() {
             clientSecret={clientSecret}
             amount={payAmount}
             summary={{
-              serviceName: services.find((s) => s.id === serviceId)?.name || 'Service',
-              barberName: barber?.name || 'Barber',
+              serviceName: services.find((s) => s.id === serviceId)?.name || t('book.service'),
+              barberName: barber?.name || t('book.barber'),
               dateLabel: fmtDate(date),
               time,
-              totalPrice: services.find((s) => s.id === serviceId)?.price ?? payAmount,
+              totalPrice: disc(services.find((s) => s.id === serviceId)?.price ?? payAmount),
             }}
             onSuccess={(paymentIntentId) => placeBooking(paymentIntentId)}
             onBack={() => { setStep('details'); setClientSecret(''); }}
@@ -391,19 +406,22 @@ export default function BookPage() {
       ) : (
       <div className="grid gap-5 fade-in">
         <div className="card p-5 overflow-hidden">
-          <label className="label"><span className="inline-flex items-center gap-1.5"><ScissorsIcon size={14} className="text-gold" /> Service</span></label>
+          <label className="label"><span className="inline-flex items-center gap-1.5"><ScissorsIcon size={14} className="text-gold" /> {t('book.serviceLabel')}</span></label>
           <select className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} — ${s.price} ({s.durationMin} min)
+                {s.name} — ${disc(s.price)}{hasDiscount && s.price !== disc(s.price) ? ` (was $${s.price})` : ''} ({s.durationMin} min)
               </option>
             ))}
           </select>
-          {services.length === 0 && <p className="text-sm text-neutral-600 mt-2 leading-relaxed">No services listed yet — the shop owner can add services and prices from the owner panel.</p>}
+          {hasDiscount && (
+            <p className="text-[12px] font-bold text-green-800 mt-2">🎓 {t('book.discountApplied')}</p>
+          )}
+          {services.length === 0 && <p className="text-sm text-neutral-600 mt-2 leading-relaxed">{t('book.noServices')}</p>}
         </div>
 
         <div className="card p-5 overflow-hidden">
-          <label className="label"><span className="inline-flex items-center gap-1.5"><CalendarIcon size={14} className="text-gold" /> Day <span className="text-neutral-400 font-normal">— all 14 days</span></span></label>
+          <label className="label"><span className="inline-flex items-center gap-1.5"><CalendarIcon size={14} className="text-gold" /> {t('book.day')} <span className="text-neutral-400 font-normal">— {t('book.all14Days')}</span></span></label>
           <div className="grid grid-cols-7 gap-1.5">
             {days.map((d) => {
               const closed = isDayClosed(d.value);
@@ -430,34 +448,34 @@ export default function BookPage() {
               );
             })}
           </div>
-          <p className="text-[12px] text-neutral-500 mt-2.5"><span className="line-through">Crossed-out</span> days are days off.</p>
+          <p className="text-[12px] text-neutral-500 mt-2.5">{t('book.crossedOut')}</p>
         </div>
 
         <div className="card p-5 overflow-hidden">
-          <label className="label"><span className="inline-flex items-center gap-1.5"><ClockIcon size={14} className="text-gold" /> Time</span></label>
+          <label className="label"><span className="inline-flex items-center gap-1.5"><ClockIcon size={14} className="text-gold" /> {t('book.time')}</span></label>
           {dayClosed ? (
             <p className="text-sm text-neutral-600 bg-[#f4edda] border border-[#e6dabf] rounded-xl px-4 py-3 leading-relaxed">
-              {barber?.name} doesn&apos;t work on {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}s — please pick another day.
+              {t('book.doesntWorkDay').replace('{name}', barber?.name || '').replace('{day}', new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }))}
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-2.5">
-              {availableTimes.map((t) => {
-                const booked = bookedTimes.includes(t);
+              {availableTimes.map((slot) => {
+                const booked = bookedTimes.includes(slot);
                 return (
                   <button
-                    key={t}
+                    key={slot}
                     disabled={booked}
-                    onClick={() => setTime(t)}
-                    title={booked ? 'Already booked' : undefined}
+                    onClick={() => setTime(slot)}
+                    title={booked ? t('book.alreadyBooked') : undefined}
                     className={`min-w-0 px-2 py-3 rounded-xl border text-[15px] font-semibold transition-all min-h-[48px] ${
                       booked
                         ? 'border-[#e0d5b8] bg-[#f1ead6] text-neutral-400 line-through cursor-not-allowed'
-                        : time === t
+                        : time === slot
                           ? 'border-[#1c1a15] bg-[#1c1a15] text-white shadow-[0_4px_14px_rgba(0,0,0,0.18)]'
                           : 'border-[#dccfae] bg-[#f4edda] text-neutral-700'
                     }`}
                   >
-                    {formatTime12h(t)}
+                    {formatTime12h(slot)}
                   </button>
                 );
               })}
@@ -467,12 +485,12 @@ export default function BookPage() {
 
         <div className="card p-5 grid grid-cols-1 gap-4 overflow-hidden">
           <div className="min-w-0">
-            <label className="label"><span className="inline-flex items-center gap-1.5"><UserIcon size={14} className="text-gold" /> Your name</span></label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" />
+            <label className="label"><span className="inline-flex items-center gap-1.5"><UserIcon size={14} className="text-gold" /> {t('book.yourName')}</span></label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('book.fullName')} autoComplete="name" />
           </div>
           <div className="min-w-0">
-            <label className="label"><span className="inline-flex items-center gap-1.5"><PhoneIcon size={14} className="text-gold" /> Phone</span></label>
-            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(410) 555-0100" inputMode="tel" autoComplete="tel" />
+            <label className="label"><span className="inline-flex items-center gap-1.5"><PhoneIcon size={14} className="text-gold" /> {t('book.phone')}</span></label>
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('book.phonePlaceholder')} inputMode="tel" autoComplete="tel" />
           </div>
         </div>
 
@@ -482,7 +500,7 @@ export default function BookPage() {
           <>
             {planOptions.length > 1 && (
               <div className="grid gap-2">
-                <p className="text-[13px] font-bold text-neutral-600">Which plan is this booking for?</p>
+                <p className="text-[13px] font-bold text-neutral-600">{t('book.whichPlan')}</p>
                 <div className="flex flex-wrap gap-2">
                   {planOptions.map((p) => (
                     <button
@@ -502,15 +520,15 @@ export default function BookPage() {
               </div>
             )}
             <button onClick={bookWithMembership} disabled={busy} className="gold-btn rounded-2xl px-6 py-4 text-[17px]">
-              {busy ? 'Booking…' : 'Book with my plan — no payment'}
+              {busy ? t('book.bookingInProgress') : t('book.bookWithPlan')}
             </button>
             <button onClick={continueToPayment} disabled={busy} className="gold-outline-btn rounded-2xl px-6 py-3.5 text-[15px] -mt-2">
-              Or pay a $5 deposit instead
+              {t('book.payDepositInstead')}
             </button>
           </>
         ) : (
           <button onClick={continueToPayment} disabled={busy} className="gold-btn rounded-2xl px-6 py-4 text-[17px]">
-            {busy ? 'Preparing…' : 'Continue to payment'}
+            {busy ? t('book.preparing') : t('book.continueToPayment')}
           </button>
         )}
       </div>

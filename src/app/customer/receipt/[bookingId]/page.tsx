@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useCustomerAuth } from '@/components/CustomerAuth';
 import { ArrowLeftIcon, ShareIcon, PrintIcon, CheckSealIcon } from '@/components/Icons';
 import { formatTime12h } from '@/lib/format';
+import { useLang } from '@/components/LanguageContext';
 
 interface ReceiptBooking {
   id: string;
@@ -40,6 +41,7 @@ function fmtIssued(iso: string) {
 }
 
 export default function ReceiptPage() {
+  const { t } = useLang();
   const { checked, token } = useCustomerAuth();
   const params = useParams();
   const router = useRouter();
@@ -64,7 +66,7 @@ export default function ReceiptPage() {
   if (!checked) {
     return (
       <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
-        <div className="card p-10 text-center text-neutral-500">Loading…</div>
+        <div className="card p-10 text-center text-neutral-500">{t('receipt.loading')}</div>
       </main>
     );
   }
@@ -73,10 +75,10 @@ export default function ReceiptPage() {
     return (
       <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
         <div className="card p-10 mt-10 text-center">
-          <p className="font-bold text-lg">Receipt not found</p>
-          <p className="page-sub mt-1">This booking is no longer available.</p>
+          <p className="font-bold text-lg">{t('receipt.notFound')}</p>
+          <p className="page-sub mt-1">{t('receipt.noLongerAvailable')}</p>
           <Link href="/customer/appointments" className="gold-btn rounded-2xl px-8 py-3 inline-block mt-6 text-[15px]">
-            My appointments
+            {t('receipt.myAppointments')}
           </Link>
         </div>
       </main>
@@ -86,7 +88,7 @@ export default function ReceiptPage() {
   if (!booking) {
     return (
       <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
-        <div className="card p-10 text-center text-neutral-500">Loading receipt…</div>
+        <div className="card p-10 text-center text-neutral-500">{t('receipt.loadingReceipt')}</div>
       </main>
     );
   }
@@ -99,17 +101,23 @@ export default function ReceiptPage() {
   const viaPlan = bookingData.membership !== null;
 
   async function share() {
-    const text =
-      `${bookingData.salonName} — Receipt ${receiptNo}\n` +
-      `${bookingData.serviceName} with ${bookingData.barberName}\n` +
-      `${fmtDate(bookingData.date)} at ${formatTime12h(bookingData.time)}\n` +
-      (viaPlan ? `Paid via monthly plan` : `Deposit paid: $${deposit.toFixed(2)}${remaining > 0.005 ? ` · Due at shop: $${remaining.toFixed(2)}` : ''}`);
+    const paidLine = viaPlan
+      ? t('receipt.paidLinePlan')
+      : `${t('receipt.depositPaid')}: $${deposit.toFixed(2)}${remaining > 0.005 ? ` · ${t('receipt.dueAtShop')}: $${remaining.toFixed(2)}` : ''}`;
+    const text = t('receipt.shareText')
+      .replace('{salon}', bookingData.salonName)
+      .replace('{no}', receiptNo)
+      .replace('{service}', bookingData.serviceName)
+      .replace('{barber}', bookingData.barberName)
+      .replace('{date}', fmtDate(bookingData.date))
+      .replace('{time}', formatTime12h(bookingData.time))
+      .replace('{paidLine}', paidLine);
     try {
       if (navigator.share) {
         await navigator.share({ title: `Receipt ${receiptNo}`, text });
       } else {
         await navigator.clipboard.writeText(text);
-        alert('Receipt copied.');
+        alert(t('receipt.copied'));
       }
     } catch {
       /* user cancelled */
@@ -119,7 +127,7 @@ export default function ReceiptPage() {
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
       <button onClick={() => router.back()} className="back-link">
-        <ArrowLeftIcon size={16} /> Back
+        <ArrowLeftIcon size={16} /> {t('receipt.back')}
       </button>
 
       {/* Paper receipt */}
@@ -128,20 +136,20 @@ export default function ReceiptPage() {
           <Image src="/logo.jpg" alt="" width={56} height={56} className="hero-logo mx-auto" />
           <h1 className="font-extrabold text-xl mt-3 tracking-wide">{bookingData.salonName}</h1>
           <p className="text-[13px] text-neutral-500 mt-0.5">{bookingData.branchAddress}</p>
-          <p className="text-[13px] font-bold text-gold mt-2 tracking-[0.2em]">RECEIPT</p>
+          <p className="text-[13px] font-bold text-gold mt-2 tracking-[0.2em]">{t('receipt.receiptTitle')}</p>
         </div>
 
         <div className="px-6 py-5 text-[14px]">
           <div className="flex justify-between text-neutral-500 text-[13px]">
-            <span>Receipt no.</span>
+            <span>{t('receipt.receiptNo')}</span>
             <b className="text-neutral-800">{receiptNo}</b>
           </div>
           <div className="flex justify-between text-neutral-500 text-[13px] mt-1.5">
-            <span>Issued</span>
+            <span>{t('receipt.issued')}</span>
             <b className="text-neutral-800">{fmtIssued(booking.createdAt)}</b>
           </div>
           <div className="flex justify-between text-neutral-500 text-[13px] mt-1.5">
-            <span>Customer</span>
+            <span>{t('receipt.customer')}</span>
             <b className="text-neutral-800">{bookingData.customerName}</b>
           </div>
 
@@ -151,7 +159,7 @@ export default function ReceiptPage() {
             <div className="min-w-0">
               <b>{bookingData.serviceName}</b>
               <p className="text-neutral-500 text-[13px] mt-0.5">
-                with {bookingData.barberName} · {fmtDate(booking.date)} at {formatTime12h(bookingData.time)}
+                {t('receipt.with')} {bookingData.barberName} · {fmtDate(booking.date)} {t('receipt.at')} {formatTime12h(bookingData.time)}
               </p>
               <p className="text-neutral-500 text-[13px]">{bookingData.branchName}</p>
             </div>
@@ -162,21 +170,21 @@ export default function ReceiptPage() {
 
           {viaPlan ? (
             <div className="flex justify-between font-bold">
-              <span>Paid via monthly plan</span>
-              <span className="text-gold">$0.00 due</span>
+              <span>{t('receipt.paidViaPlan')}</span>
+              <span className="text-gold">{t('receipt.zeroDue')}</span>
             </div>
           ) : (
             <>
               <div className="flex justify-between text-neutral-600">
-                <span>Deposit paid</span>
+                <span>{t('receipt.depositPaid')}</span>
                 <span className="font-semibold text-neutral-800">${deposit.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-neutral-600 mt-1.5">
-                <span>Due at the shop</span>
+                <span>{t('receipt.dueAtShop')}</span>
                 <span className="font-semibold text-neutral-800">${remaining.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-extrabold text-[16px] mt-2.5">
-                <span>Total</span>
+                <span>{t('receipt.total')}</span>
                 <span className="text-gold">${price.toFixed(2)}</span>
               </div>
             </>
@@ -185,17 +193,17 @@ export default function ReceiptPage() {
           <div className="border-t-2 border-dashed border-[#e6dabf] my-4" />
           <p className="text-center text-neutral-500 text-[13px]">
             <CheckSealIcon size={18} className="inline-block -mt-0.5 mr-1" />
-            Thank you — we&apos;ll see you soon.
+            {t('receipt.thankYou')}
           </p>
         </div>
       </div>
 
       <div className="flex gap-3 mt-5 no-print">
         <button onClick={share} className="gold-btn rounded-2xl px-6 py-3.5 text-[15px] flex-1 inline-flex items-center justify-center gap-2">
-          <ShareIcon size={16} /> Share
+          <ShareIcon size={16} /> {t('receipt.share')}
         </button>
         <button onClick={() => window.print()} className="gold-outline-btn rounded-2xl px-6 py-3.5 text-[15px] flex-1 inline-flex items-center justify-center gap-2">
-          <PrintIcon size={16} /> Print
+          <PrintIcon size={16} /> {t('receipt.print')}
         </button>
       </div>
     </main>

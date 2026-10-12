@@ -15,7 +15,10 @@ import BonusesTab from '@/components/BonusesTab';
 import { Leaderboard } from '@/components/Leaderboard';
 import type { Barber, Service, Review, Branch, Booking, WorkingHours, Salon } from '@/lib/types';
 
-type Tab = 'bookings' | 'barbers' | 'leaderboard' | 'services' | 'reviews' | 'customers' | 'plans' | 'earnings' | 'photos' | 'complaints' | 'skills' | 'shop' | 'partners' | 'salons' | 'tasks' | 'bonuses';
+import { authHeaders } from './auth';
+import { DiscountsTab } from './discounts-tab';
+
+type Tab = 'bookings' | 'barbers' | 'leaderboard' | 'services' | 'reviews' | 'customers' | 'plans' | 'earnings' | 'photos' | 'complaints' | 'skills' | 'shop' | 'partners' | 'salons' | 'tasks' | 'bonuses' | 'discounts';
 
 // Compact read-only summary of a barber's self-set working hours, e.g.
 // "Mon–Fri 9:00 AM–5:00 PM · Sat 10:00 AM–2:00 PM". Empty = never set.
@@ -96,10 +99,7 @@ interface CustomerRow {
   createdAt: string;
 }
 
-function authHeaders(): HeadersInit {
-  const token = localStorage.getItem('mrc_owner_token') || '';
-  return { Authorization: `Bearer ${token}` };
-}
+// Compact read-only summary
 
 function Stars({ rating }: { rating: number }) {
   return (
@@ -203,6 +203,7 @@ export default function OwnerDashboard() {
     { id: 'salons', label: '💈 Salons' },
     { id: 'tasks', label: '✅ Tasks' },
     { id: 'customers', label: 'Customers' },
+    { id: 'discounts', label: '🎓 Discounts' },
     { id: 'plans', label: 'Plans' },
     { id: 'earnings', label: 'Earnings' },
   ];
@@ -278,6 +279,7 @@ export default function OwnerDashboard() {
             {tab === 'shop' && <ShopTab />}
             {tab === 'partners' && <PartnersTab />}
             {tab === 'customers' && <CustomersTab customers={customers} bookings={bookings} reload={load} />}
+            {tab === 'discounts' && <DiscountsTab />}
             {tab === 'plans' && <PlansTab plans={plans} />}
             {tab === 'earnings' && <EarningsTab data={earnings} />}
             {tab === 'salons' && <SalonsTab />}
@@ -1393,18 +1395,18 @@ function CustomersTab({ customers, bookings, reload }: { customers: CustomerRow[
                 {c.createdAt && <span>· Joined {fmtDate(c.createdAt)}</span>}
               </div>
             </div>
-            <div className="flex flex-col items-end gap-0.5 shrink-0">
+            <div className="flex flex-col items-end gap-1 shrink-0">
               <button
                 onClick={() => { setError(''); setConfirmFor(c); }}
-                className="inline-flex items-center gap-1.5 text-gold text-sm font-semibold shrink-0 min-h-[44px] px-2"
+                className="inline-flex items-center gap-1.5 text-gold text-[13px] font-semibold shrink-0 whitespace-nowrap min-h-[40px] px-1.5"
               >
-                <LockIcon size={15} /> Reset password
+                <LockIcon size={14} /> Reset password
               </button>
               <button
                 onClick={() => { setError(''); setDeleteFor(c); }}
-                className="inline-flex items-center gap-1.5 text-red-700/90 text-sm font-semibold shrink-0 min-h-[44px] px-2"
+                className="inline-flex items-center gap-1.5 text-red-700/90 text-[13px] font-semibold shrink-0 whitespace-nowrap min-h-[40px] px-1.5"
               >
-                <TrashIcon size={15} /> Delete
+                <TrashIcon size={14} /> Delete
               </button>
             </div>
           </div>

@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { ScanIcon, CheckSealIcon } from '@/components/Icons';
+import { useLang } from '@/components/LanguageContext';
 
 interface Summary {
   kind: 'payment' | 'membership' | 'gift' | 'comp' | 'loyalty';
@@ -33,10 +34,36 @@ interface Summary {
 type ParsedCode =
   | { kind: 'payment'; bookingId: string; token: string }
   | { kind: 'membership'; membershipId: string; token: string }
+  | { kind: 'wallet'; membershipId: string }
   | { kind: 'gift'; giftId: string; token: string }
   | { kind: 'giftShort'; shortCode: string }
   | { kind: 'comp'; compId: string; token: string }
   | { kind: 'loyalty'; rewardId: string; token: string };
+
+// Fill {placeholders} in a translated template with React nodes — keeps <b>
+// emphasis and survives word-order changes across languages.
+function fillTemplate(template: string, values: Record<string, React.ReactNode>) {
+  return (
+    <>
+      {template.split(/(\{[^}]+\})/g).map((part, i) => {
+        const m = /^\{([^}]+)\}$/.exec(part);
+        const v = m ? values[m[1]] : undefined;
+        return <React.Fragment key={i}>{v !== undefined ? v : part}</React.Fragment>;
+      })}
+    </>
+  );
+}
+
+// Split a translated "lead — emphasized tail" string so the tail keeps <b>.
+function splitEmphasis(s: string) {
+  const i = s.indexOf('\u2014');
+  if (i < 0) return <>{s}</>;
+  return (
+    <>
+      {s.slice(0, i).trim()} — <b>{s.slice(i + 1).trim()}</b>
+    </>
+  );
+}
 
 // How long to ignore the same failing code before allowing a retry —
 // stops the scanner hammering the API while one bad QR stays in view.
@@ -70,12 +97,17 @@ export function CollectScanner({
   const handledRef = useRef(false);
   const lastFailRef = useRef<{ code: string; at: number } | null>(null);
   const qrRef = useRef<Html5Qrcode | null>(null);
+  const { t } = useLang();
 
   function parseCode(raw: string): ParsedCode | null {
     const code = raw.trim();
     // A bare 6-character code is a gift short code (no colons).
     if (/^[A-Z0-9]{6}$/i.test(code)) return { kind: 'giftShort', shortCode: code.toUpperCase() };
     const parts = code.split(':');
+    // Wallet pass QR: MRCW:membershipId (static, no rotating token)
+    if (parts[0] === 'MRCW' && parts.length === 2 && parts[1]) {
+      return { kind: 'wallet', membershipId: parts[1] };
+    }
     if (parts.length !== 3 || !parts[1] || !parts[2]) return null;
     if (parts[0] === 'MRC1') return { kind: 'payment', bookingId: parts[1], token: parts[2] };
     if (parts[0] === 'MRC2') return { kind: 'membership', membershipId: parts[1], token: parts[2] };
@@ -119,7 +151,7 @@ export function CollectScanner({
     const parsed = parseCode(code);
     if (!parsed) {
       lastFailRef.current = { code, at: Date.now() };
-      setError('That code is not an MRC code. Point the camera at the QR on the customer\u2019s phone, or type the 6-letter gift code.');
+      setError(t('barber.scan.error_not_mrc'));
       return;
     }
     handledRef.current = true;
@@ -137,13 +169,13 @@ export function CollectScanner({
           ),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_read'));
         // Good read — now stop the camera and show the confirmation.
         await stopCamera();
         const p = d.preview;
         setSummary({
           kind: 'gift',
-          customerName: p.recipientName || 'Gift recipient',
+          customerName: p.recipientName || t('barber.scan.gift_recipient_fallback'),
           token: parsed.kind === 'gift' ? parsed.token : '',
           giftId: parsed.kind === 'gift' ? parsed.giftId : undefined,
           shortCode: parsed.kind === 'giftShort' ? parsed.shortCode : undefined,
@@ -159,13 +191,13 @@ export function CollectScanner({
           body: JSON.stringify({ compId: parsed.compId, token: parsed.token, preview: true }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_read'));
         // Good read — now stop the camera and show the confirmation.
         await stopCamera();
         const pc = d.preview;
         setSummary({
           kind: 'comp',
-          customerName: pc.customerName || 'Customer',
+          customerName: pc.customerName || t('barber.scan.comp_customer'),
 token: parsed.token,
           compId: parsed.compId,
           serviceName: pc.serviceName,
@@ -178,16 +210,34 @@ token: parsed.token,
           body: JSON.stringify({ rewardId: parsed.rewardId, token: parsed.token, preview: true }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_read'));
         // Good read — now stop the camera and show the confirmation.
         await stopCamera();
         const pl = d.preview;
         setSummary({
           kind: 'loyalty',
-          customerName: pl.customerName || 'Customer',
+          customerName: pl.customerName || t('barber.scan.loyalty_customer'),
           token: parsed.token,
           rewardId: parsed.rewardId,
           serviceName: pl.serviceName,
+        });
+      } else if (parsed.kind === 'wallet') {
+        // Apple Wallet pass QR — static membership ID, verify it's active.
+        const r = await fetch('/api/barber/wallet-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+          body: JSON.stringify({ membershipId: parsed.membershipId }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_verify'));
+        await stopCamera();
+        setSummary({
+          kind: 'membership',
+          customerName: d.customerName,
+          token: '',
+          membershipId: parsed.membershipId,
+          weekLabel: d.weekLabel,
+          serviceName: d.serviceName,
         });
       } else if (parsed.kind === 'membership') {
         const r = await fetch('/api/memberships/redeem', {
@@ -196,7 +246,7 @@ token: parsed.token,
           body: JSON.stringify({ membershipId: parsed.membershipId, token: parsed.token, preview: true }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_read'));
         // Good read — now stop the camera and show the confirmation.
         await stopCamera();
         setSummary({
@@ -214,7 +264,7 @@ token: parsed.token,
           body: JSON.stringify({ bookingId: parsed.bookingId, token: parsed.token, preview: true }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not read the code.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.error_read'));
         // Good read — now stop the camera and show the confirmation.
         await stopCamera();
         setSummary({
@@ -235,7 +285,7 @@ token: parsed.token,
       // Keep the camera RUNNING so the barber can immediately scan a fresh
       // code — no more frozen viewfinder after a failed read.
       lastFailRef.current = { code, at: Date.now() };
-      setError(e instanceof Error ? e.message : 'Could not read the code.');
+      setError(e instanceof Error ? e.message : t('barber.scan.error_read'));
       handledRef.current = false;
     }
     setBusy(false);
@@ -284,13 +334,13 @@ token: parsed.token,
         setStartingCam(false);
         const name = (e as { name?: string })?.name ?? '';
         if (name === 'NotAllowedError') {
-          setCamError('Camera permission was denied. Allow camera access for this site and try again — or enter the code manually below.');
+          setCamError(t('barber.scan.cam_denied'));
         } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
-          setCamError('No camera found on this device. Enter the code manually below.');
+          setCamError(t('barber.scan.cam_not_found'));
         } else if (name === 'NotReadableError') {
-          setCamError('The camera is busy in another app. Close it and retry — or enter the code manually below.');
+          setCamError(t('barber.scan.cam_busy'));
         } else {
-          setCamError('Could not start the camera on this device. Enter the code manually below.');
+          setCamError(t('barber.scan.cam_generic'));
         }
       }
     })();
@@ -314,7 +364,7 @@ token: parsed.token,
     try {
       if (summary.kind === 'gift') {
         // Proof-of-completion photo required (like DoorDash): no photo = no payout.
-        if (!photoFile) throw new Error('Take a photo of the finished haircut to get paid.');
+        if (!photoFile) throw new Error(t('barber.scan.photo_required'));
         const form = new FormData();
         if (summary.shortCode) form.append('shortCode', summary.shortCode);
         else {
@@ -328,7 +378,7 @@ token: parsed.token,
           body: form,
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not redeem the gift.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.gift_redeem_error'));
         setPhase('done');
         onCollected();
         return;
@@ -340,7 +390,7 @@ token: parsed.token,
           body: JSON.stringify({ compId: summary.compId, token: summary.token }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not redeem the free haircut.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.comp_error'));
         setPhase('done');
         onCollected();
         return;
@@ -352,14 +402,14 @@ token: parsed.token,
           body: JSON.stringify({ rewardId: summary.rewardId, token: summary.token }),
         });
         const d = await r.json();
-        if (!r.ok) throw new Error(d.error || 'Could not redeem the free haircut.');
+        if (!r.ok) throw new Error(d.error || t('barber.scan.loyalty_error'));
         setPhase('done');
         onCollected();
         return;
       }
       if (summary.kind === 'membership') {
         // Proof-of-completion photo required (like DoorDash): no photo = no payout.
-        if (!photoFile) throw new Error('Take a photo of the finished haircut to get paid.');
+        if (!photoFile) throw new Error(t('barber.scan.photo_required'));
         const form = new FormData();
         form.append('membershipId', summary.membershipId!);
         form.append('token', summary.token);
@@ -381,11 +431,11 @@ token: parsed.token,
         body: JSON.stringify({ bookingId: summary.bookingId, token: summary.token }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'The charge failed.');
+      if (!r.ok) throw new Error(d.error || t('barber.scan.error_charge'));
       setPhase('done');
       onCollected();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'The charge failed.');
+      setError(e instanceof Error ? e.message : t('barber.scan.error_charge'));
     }
     setBusy(false);
   }
@@ -414,11 +464,11 @@ token: parsed.token,
     e.target.value = '';
     if (!f) return;
     if (!f.type.startsWith('image/')) {
-      setError('That file is not an image.');
+      setError(t('barber.scan.photo_not_image'));
       return;
     }
     if (f.size > 5 * 1024 * 1024) {
-      setError('Photo is too large (max 5MB).');
+      setError(t('barber.scan.photo_too_large'));
       return;
     }
     setPhotoFile(f);
@@ -433,7 +483,7 @@ token: parsed.token,
         className="w-full inline-flex items-center justify-center gap-2 gold-btn rounded-2xl font-extrabold text-[15px] py-3.5"
       >
         <ScanIcon size={18} />
-        Scan payment code
+        {t('barber.scan.trigger')}
       </button>
 
       {open && (
@@ -443,10 +493,10 @@ token: parsed.token,
             {phase === 'scan' && (
               <>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-extrabold text-[17px]">Scan customer code</h3>
+                  <h3 className="font-extrabold text-[17px]">{t('barber.scan.title')}</h3>
                   <button
                     onClick={close}
-                    aria-label="Close"
+                    aria-label={t('barber.scan.close_aria')}
                     className="w-9 h-9 shrink-0 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-600 font-bold text-[15px] leading-none"
                   >
                     ✕
@@ -460,7 +510,7 @@ token: parsed.token,
                       onClick={restartCamera}
                       className="gold-btn rounded-2xl px-6 py-2.5 mt-3 text-[14px] font-bold"
                     >
-                      Retry camera
+                      {t('barber.scan.retry_camera')}
                     </button>
                   </div>
                 ) : (
@@ -469,7 +519,7 @@ token: parsed.token,
                     {(startingCam || busy) && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/45">
                         <p className="text-white text-sm font-semibold">
-                          {startingCam ? 'Starting camera…' : 'Reading code…'}
+                          {startingCam ? t('barber.scan.starting_camera') : t('barber.scan.reading_code')}
                         </p>
                       </div>
                     )}
@@ -483,14 +533,14 @@ token: parsed.token,
                 )}
 
                 <p className="text-[12px] text-neutral-500 text-center mt-2.5 leading-relaxed">
-                  Point at the QR on the customer&apos;s phone — it scans automatically.
+                  {t('barber.scan.hint')}
                 </p>
 
                 <button
                   onClick={() => setShowManual((s) => !s)}
                   className="w-full mt-1 text-[13px] text-gold font-semibold py-2"
                 >
-                  {showManual ? 'Hide manual entry' : 'Camera not working? Enter the code manually'}
+                  {showManual ? t('barber.scan.manual_toggle_hide') : t('barber.scan.manual_toggle_show')}
                 </button>
                 {showManual && (
                   <div className="flex gap-2 mt-1">
@@ -498,7 +548,7 @@ token: parsed.token,
                       id="mrc-manual-code"
                       value={manual}
                       onChange={(e) => setManual(e.target.value)}
-                      placeholder="MRC1:… / MRC4:… / MRC5:… / 6-letter gift code"
+                      placeholder={t('barber.scan.manual_placeholder')}
                       autoCapitalize="off"
                       autoCorrect="off"
                       className="input flex-1 min-w-0 font-mono text-[16px]"
@@ -508,7 +558,7 @@ token: parsed.token,
                       disabled={busy || !manual.trim()}
                       className="gold-btn rounded-2xl px-5 font-bold text-[14px] disabled:opacity-50 shrink-0"
                     >
-                      Go
+                      {t('barber.scan.manual_go')}
                     </button>
                   </div>
                 )}
@@ -517,9 +567,9 @@ token: parsed.token,
 
             {phase === 'confirm' && photoStep && summary && (summary.kind === 'membership' || summary.kind === 'gift') && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">Photo of the haircut 📷</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.photo_title')}</h3>
                 <p className="text-[13px] text-neutral-500 text-center mt-1 mb-4 leading-relaxed">
-                  Take a photo of the finished haircut — <b>your payout is sent when the photo is taken</b>.
+                  {splitEmphasis(t('barber.scan.photo_hint'))}
                 </p>
                 <input
                   ref={photoInputRef}
@@ -531,11 +581,11 @@ token: parsed.token,
                 />
                 {photoPreview ? (
                   <div className="relative rounded-2xl overflow-hidden border-2 border-gold/50">
-                    <img src={photoPreview} alt="Finished haircut" className="w-full max-h-[260px] object-cover" />
+                    <img src={photoPreview} alt={t('barber.scan.photo_alt')} className="w-full max-h-[260px] object-cover" />
                     <button
                       onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
                       className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/60 text-white font-bold text-[15px]"
-                      aria-label="Retake photo"
+                      aria-label={t('barber.scan.photo_retake_aria')}
                     >
                       ✕
                     </button>
@@ -546,8 +596,8 @@ token: parsed.token,
                     className="w-full rounded-2xl border-2 border-dashed border-gold/50 bg-[#f7f2e2] py-10 text-center card-hover"
                   >
                     <div className="text-[36px]">📷</div>
-                    <p className="text-[14px] font-bold text-gold mt-1">Take a photo</p>
-                    <p className="text-[12px] text-neutral-500 mt-0.5">Opens your camera directly</p>
+                    <p className="text-[14px] font-bold text-gold mt-1">{t('barber.scan.photo_take')}</p>
+                    <p className="text-[12px] text-neutral-500 mt-0.5">{t('barber.scan.photo_opens_camera')}</p>
                   </button>
                 )}
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
@@ -556,148 +606,148 @@ token: parsed.token,
                   disabled={busy || !photoFile}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  {busy ? 'Redeeming…' : '✓ Confirm & get paid'}
+                  {busy ? t('barber.scan.photo_redeeming') : t('barber.scan.photo_confirm')}
                 </button>
                 <button
                   onClick={() => { resetPhoto(); setError(''); }}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Back
+                  {t('barber.scan.photo_back')}
                 </button>
               </>
             )}
 
             {phase === 'confirm' && !photoStep && summary && summary.kind === 'membership' && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">Confirm redemption</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.membership_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border border-[#e6dabf] rounded-2xl p-4">
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Member</span><b className="text-right">{summary.customerName}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Plan</span><b className="text-right">Monthly — 4 haircuts</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">This week</span><b className="text-right">{summary.weekLabel}{summary.serviceName ? ` — ${summary.serviceName}` : ''}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_member')}</span><b className="text-right">{summary.customerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_plan')}</span><b className="text-right">{t('barber.scan.membership_plan_value')}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_week')}</span><b className="text-right">{summary.weekLabel}{summary.serviceName ? ` — ${summary.serviceName}` : ''}</b></p>
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
-                    <span className="font-bold">Redeem</span>
-                    <b className="text-gold text-[20px]">{summary.serviceName ?? '1 haircut'}</b>
+                    <span className="font-bold">{t('barber.scan.membership_redeem')}</span>
+                    <b className="text-gold text-[20px]">{summary.serviceName ?? t('barber.scan.membership_redeem_value')}</b>
                   </p>
                 </div>
-                <p className="text-[12px] text-neutral-500 text-center mt-2">One haircut per week — unused weeks don&apos;t carry over.</p>
+                <p className="text-[12px] text-neutral-500 text-center mt-2">{t('barber.scan.membership_note')}</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
                   onClick={() => startPhotoStep()}
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  Redeem 1 haircut
+                  {t('barber.scan.membership_cta')}
                 </button>
                 <button
                   onClick={scanDifferent}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Scan a different code
+                  {t('barber.scan.scan_different')}
                 </button>
               </>
             )}
 
             {phase === 'confirm' && !photoStep && summary && summary.kind === 'gift' && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">🎁 Gift haircut</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.gift_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border-2 border-gold/60 rounded-2xl p-4">
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Service</span><b className="text-right">{summary.serviceName!}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">From</span><b className="text-right">{summary.buyerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.gift_service')}</span><b className="text-right">{summary.serviceName!}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.gift_from')}</span><b className="text-right">{summary.buyerName}</b></p>
                   {summary.recipientName && (
-                    <p className="flex justify-between gap-3"><span className="text-neutral-500">For</span><b className="text-right">{summary.recipientName}</b></p>
+                    <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.gift_for')}</span><b className="text-right">{summary.recipientName}</b></p>
                   )}
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
-                    <span className="font-bold">Value</span>
+                    <span className="font-bold">{t('barber.scan.gift_value')}</span>
                     <b className="text-gold text-[20px]">${summary.price!.toFixed(2)}</b>
                   </p>
                 </div>
-                <p className="text-[12px] text-neutral-500 text-center mt-2">Single use — the haircut is already paid for.</p>
+                <p className="text-[12px] text-neutral-500 text-center mt-2">{t('barber.scan.gift_note')}</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
                   onClick={() => startPhotoStep()}
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  Redeem gift
+                  {t('barber.scan.gift_cta')}
                 </button>
                 <button
                   onClick={scanDifferent}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Scan a different code
+                  {t('barber.scan.scan_different')}
                 </button>
               </>
             )}
 
             {phase === 'confirm' && summary && summary.kind === 'comp' && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">✂️ Free haircut (comp)</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.comp_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border-2 border-gold/60 rounded-2xl p-4">
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Customer</span><b className="text-right">{summary.customerName}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Service</span><b className="text-right">{summary.serviceName!}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.comp_customer')}</span><b className="text-right">{summary.customerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.comp_service')}</span><b className="text-right">{summary.serviceName!}</b></p>
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
-                    <span className="font-bold">Value</span>
+                    <span className="font-bold">{t('barber.scan.comp_value')}</span>
                     <b className="text-gold text-[20px]">${summary.price!.toFixed(2)}</b>
                   </p>
                 </div>
-                <p className="text-[12px] text-neutral-500 text-center mt-2">Single use — granted by the owner. The customer pays nothing and there is no payout for this haircut.</p>
+                <p className="text-[12px] text-neutral-500 text-center mt-2">{t('barber.scan.comp_note')}</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
                   onClick={() => void charge()}
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  {busy ? 'Redeeming…' : 'Redeem free haircut'}
+                  {busy ? t('barber.scan.comp_redeeming') : t('barber.scan.comp_cta')}
                 </button>
                 <button
                   onClick={scanDifferent}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Scan a different code
+                  {t('barber.scan.scan_different')}
                 </button>
               </>
             )}
 
             {phase === 'confirm' && summary && summary.kind === 'loyalty' && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">🎉 Free haircut (loyalty)</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.loyalty_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border-2 border-gold/60 rounded-2xl p-4">
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Customer</span><b className="text-right">{summary.customerName}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Reward</span><b className="text-right">{summary.serviceName!}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.loyalty_customer')}</span><b className="text-right">{summary.customerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.loyalty_reward')}</span><b className="text-right">{summary.serviceName!}</b></p>
                 </div>
-                <p className="text-[12px] text-neutral-500 text-center mt-2">Single use — earned with 4 haircuts. The customer pays nothing and there is no payout for this haircut.</p>
+                <p className="text-[12px] text-neutral-500 text-center mt-2">{t('barber.scan.loyalty_note')}</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
                   onClick={() => void charge()}
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  {busy ? 'Redeeming…' : 'Redeem free haircut'}
+                  {busy ? 'Redeeming…' : t('barber.scan.loyalty_cta')}
                 </button>
                 <button
                   onClick={scanDifferent}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Scan a different code
+                  {t('barber.scan.scan_different')}
                 </button>
               </>
             )}
 
             {phase === 'confirm' && summary && summary.kind === 'payment' && (
               <>
-                <h3 className="font-extrabold text-[18px] text-center">Confirm collection</h3>
+                <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.payment_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border border-[#e6dabf] rounded-2xl p-4">
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Customer</span><b className="text-right">{summary.customerName}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Service</span><b className="text-right">{summary.serviceName!}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">When</span><b className="text-right">{summary.date!} at {summary.time!}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">Deposit paid</span><b className="text-right">${summary.depositPaid!.toFixed(2)}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_customer')}</span><b className="text-right">{summary.customerName}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_service')}</span><b className="text-right">{summary.serviceName!}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_when')}</span><b className="text-right">{summary.date!} at {summary.time!}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_deposit')}</span><b className="text-right">${summary.depositPaid!.toFixed(2)}</b></p>
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
-                    <span className="font-bold">Charge now</span>
+                    <span className="font-bold">{t('barber.scan.payment_charge_now')}</span>
                     <b className="text-gold text-[20px]">${summary.amount!.toFixed(2)}</b>
                   </p>
                 </div>
@@ -707,14 +757,14 @@ token: parsed.token,
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  {busy ? 'Charging…' : `Charge $${summary.amount!.toFixed(2)}`}
+                  {busy ? t('barber.scan.payment_charging') : t('barber.scan.payment_cta').replace('{amount}', summary.amount!.toFixed(2))}
                 </button>
                 <button
                   onClick={scanDifferent}
                   disabled={busy}
                   className="w-full mt-2 text-sm text-neutral-500 font-medium py-2"
                 >
-                  Scan a different code
+                  {t('barber.scan.scan_different')}
                 </button>
               </>
             )}
@@ -724,12 +774,12 @@ token: parsed.token,
                 <div className="mx-auto w-16 h-16 rounded-full bg-green-600/10 border border-green-600/30 flex items-center justify-center text-green-700 mb-4">
                   <CheckSealIcon size={34} />
                 </div>
-                <h3 className="font-extrabold text-[19px]">Haircut redeemed</h3>
+                <h3 className="font-extrabold text-[19px]">{t('barber.scan.membership_done_title')}</h3>
                 <p className="text-sm text-neutral-600 mt-2 leading-relaxed">
-                  <b>{summary.weekLabel}</b> used for {summary.customerName}.
+                  {fillTemplate(t('barber.scan.membership_done_body'), { week: <b>{summary.weekLabel}</b>, name: summary.customerName })}
                 </p>
                 <button onClick={close} className="gold-btn rounded-2xl font-bold text-[15px] px-10 py-3 mt-6">
-                  Done
+                  {t('barber.scan.done_button')}
                 </button>
               </div>
             )}
@@ -739,13 +789,13 @@ token: parsed.token,
                 <div className="mx-auto w-16 h-16 rounded-full bg-green-600/10 border border-green-600/30 flex items-center justify-center text-green-700 mb-4">
                   <CheckSealIcon size={34} />
                 </div>
-                <h3 className="font-extrabold text-[19px]">🎁 Gift redeemed</h3>
+                <h3 className="font-extrabold text-[19px]">{t('barber.scan.gift_done_title')}</h3>
                 <p className="text-sm text-neutral-600 mt-2 leading-relaxed">
-                  <b>{summary.serviceName}</b> — enjoy the haircut!
-                  {summary.buyerName && <><br />Gifted by <b>{summary.buyerName}</b>.</>}
+                  {fillTemplate(t('barber.scan.gift_done_body'), { service: <b>{summary.serviceName}</b> })}
+                  {summary.buyerName && <><br />{fillTemplate(t('barber.scan.gift_done_giver'), { name: <b>{summary.buyerName}</b> })}</>}
                 </p>
                 <button onClick={close} className="gold-btn rounded-2xl font-bold text-[15px] px-10 py-3 mt-6">
-                  Done
+                  {t('barber.scan.done_button')}
                 </button>
               </div>
             )}
@@ -755,13 +805,13 @@ token: parsed.token,
                 <div className="mx-auto w-16 h-16 rounded-full bg-green-600/10 border border-green-600/30 flex items-center justify-center text-green-700 mb-4">
                   <CheckSealIcon size={34} />
                 </div>
-                <h3 className="font-extrabold text-[19px]">Payment complete</h3>
+                <h3 className="font-extrabold text-[19px]">{t('barber.scan.payment_done_title')}</h3>
                 <p className="text-sm text-neutral-600 mt-2 leading-relaxed">
-                  <b>${summary.amount!.toFixed(2)}</b> collected from {summary.customerName}.
-                  <br />Total paid: <b>${summary.price!.toFixed(2)}</b> — all done.
+                  {fillTemplate(t('barber.scan.payment_done_body'), { amount: <b>${summary.amount!.toFixed(2)}</b>, name: summary.customerName })}
+                  <br />{fillTemplate(t('barber.scan.payment_done_total'), { total: <b>${summary.price!.toFixed(2)}</b> })}
                 </p>
                 <button onClick={close} className="gold-btn rounded-2xl font-bold text-[15px] px-10 py-3 mt-6">
-                  Done
+                  {t('barber.scan.done_button')}
                 </button>
               </div>
             )}

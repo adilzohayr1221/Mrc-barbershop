@@ -48,8 +48,13 @@ export async function POST(req: Request) {
         defaults: {
           currency: 'usd',
           responsibilities: {
-            fees_collector: 'stripe',
-            losses_collector: 'stripe',
+            // Stripe v2 REQUIRES the application (platform) as collector when
+            // dashboard is 'express' — any other pairing is rejected with
+            // account_controller_express_dash_without_application_losses_or_fees.
+            // The barber still bears the fees (owner's rule): we deduct the
+            // $0.25 bank-payout fee from each transfer in lib/payouts.ts.
+            fees_collector: 'application',
+            losses_collector: 'application',
           },
         },
       });
@@ -73,9 +78,11 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Could not start onboarding.';
     console.error('[connect] onboard failed', msg);
-    // Don't leak raw Stripe API text to the barber — show a friendly message.
+    // Don't leak raw Stripe API text to the barber — show a friendly message,
+    // but include the safe error code so we can diagnose real failures.
+    const code = (e as { code?: string })?.code || 'unknown';
     return NextResponse.json(
-      { error: 'Could not connect to the bank setup right now. Please try again in a moment.' },
+      { error: 'Could not connect to the bank setup right now. Please try again in a moment.', code },
       { status: 500 }
     );
   }

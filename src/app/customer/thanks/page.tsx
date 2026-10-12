@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useLang } from '@/components/LanguageContext';
 import { ArrowLeftIcon } from '@/components/Icons';
 
 interface ThanksInfo {
@@ -19,6 +20,7 @@ const TIP_PRESETS = [2, 5, 10];
 
 function ThanksInner() {
   const { checked, token } = useCustomerAuth();
+  const { t } = useLang();
   const searchParams = useSearchParams();
   const ref = searchParams.get('ref') || '';
   const [info, setInfo] = useState<ThanksInfo | null>(null);
@@ -39,16 +41,16 @@ function ThanksInner() {
     })
       .then((r) => r.json().then((d) => ({ r, d })))
       .then(({ r, d }) => {
-        if (!r.ok) throw new Error(d.error || 'Could not load.');
+        if (!r.ok) throw new Error(d.error || t('thanks.couldNotLoad'));
         setInfo(d);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load.'))
+      .catch((e) => setError(e instanceof Error ? e.message : t('thanks.couldNotLoad')))
       .finally(() => setLoading(false));
   }, [checked, token, ref]);
 
   async function submit() {
     if (!info || stars < 1 || stars > 5) {
-      setError('Tap the stars to rate your haircut.');
+      setError(t('thanks.tapStars'));
       return;
     }
     setBusy(true);
@@ -62,7 +64,7 @@ function ThanksInner() {
         body: JSON.stringify({ barberId: info.barberId, rating: stars, text }),
       });
       const rd = await rr.json().catch(() => null);
-      if (!rr.ok) throw new Error(rd?.error || 'Could not send your review.');
+      if (!rr.ok) throw new Error(rd?.error || t('thanks.couldNotSendReview'));
 
       // 2. Tip (بقشيش), if chosen and available.
       const tipAmount = tip ?? (customTip ? Number(customTip) : 0);
@@ -75,12 +77,12 @@ function ThanksInner() {
         const td = await tr.json().catch(() => null);
         if (!tr.ok) {
           // Review is saved; surface the tip problem without failing everything.
-          setTipError(td?.error || 'The tip did not go through.');
+          setTipError(td?.error || t('thanks.tipFailed'));
         }
       }
       setDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not send.');
+      setError(e instanceof Error ? e.message : t('thanks.couldNotSend'));
     }
     setBusy(false);
   }
@@ -88,7 +90,7 @@ function ThanksInner() {
   if (!checked || loading) {
     return (
       <main className="flex-1 px-4 py-10 max-w-md mx-auto w-full text-center">
-        <p className="text-neutral-500 text-sm">Loading…</p>
+        <p className="text-neutral-500 text-sm">{t('thanks.loading')}</p>
       </main>
     );
   }
@@ -96,37 +98,37 @@ function ThanksInner() {
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
       <Link href="/customer" className="inline-flex items-center gap-1.5 text-[13px] font-bold text-gold mb-4">
-        <ArrowLeftIcon size={14} /> Back
+        <ArrowLeftIcon size={14} /> {t('thanks.back')}
       </Link>
 
       {error && !info ? (
         <div className="card p-8 text-center">
-          <p className="text-sm text-neutral-600">{error || 'This link is not valid.'}</p>
+          <p className="text-sm text-neutral-600">{error || t('thanks.invalidLink')}</p>
         </div>
       ) : done ? (
         <div className="card p-8 text-center fade-in">
           <div className="text-[48px] mb-3">🙏</div>
-          <h1 className="font-extrabold text-[20px]">Thank you!</h1>
+          <h1 className="font-extrabold text-[20px]">{t('thanks.thankYou')}</h1>
           <p className="text-[14px] text-neutral-600 mt-2 leading-relaxed">
-            Your feedback was sent to {info?.barberName}.
+            {t('thanks.feedbackSent').replace('{name}', info?.barberName ?? '')}
             {tipError ? '' : ''}
           </p>
           {tipError && (
             <p className="text-[13px] text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3.5 py-2.5 mt-3 leading-relaxed">
-              Review saved — but: {tipError}
+              {t('thanks.reviewSavedBut').replace('{error}', tipError)}
             </p>
           )}
           <Link href="/customer" className="gold-btn rounded-2xl w-full font-extrabold text-[15px] py-3.5 mt-5 inline-block">
-            Done
+            {t('thanks.done')}
           </Link>
         </div>
       ) : info ? (
         <div className="card p-6 fade-in">
           <div className="text-center">
             <div className="text-[44px] mb-2">💈</div>
-            <h1 className="font-extrabold text-[20px]">How was your haircut?</h1>
+            <h1 className="font-extrabold text-[20px]">{t('thanks.howWas')}</h1>
             <p className="text-[14px] text-neutral-500 mt-1">
-              {info.serviceName} with <b className="text-neutral-700">{info.barberName}</b>
+              {info.serviceName} {t('thanks.with')} <b className="text-neutral-700">{info.barberName}</b>
             </p>
           </div>
 
@@ -144,33 +146,33 @@ function ThanksInner() {
             ))}
           </div>
           <p className="text-center text-[12px] text-neutral-500 mt-1.5 h-4">
-            {stars === 5 && 'Amazing! 🔥'}
-            {stars === 4 && 'Great! 👏'}
-            {stars === 3 && 'Okay.'}
-            {stars === 2 && 'Not great.'}
-            {stars === 1 && 'Terrible.'}
+            {stars === 5 && t('thanks.amazing')}
+            {stars === 4 && t('thanks.great')}
+            {stars === 3 && t('thanks.okay')}
+            {stars === 2 && t('thanks.notGreat')}
+            {stars === 1 && t('thanks.terrible')}
           </p>
 
           <label className="block text-[13px] font-bold text-neutral-700 mt-4 mb-1.5">
-            A few words <span className="font-normal text-neutral-400">(optional)</span>
+            {t('thanks.aFewWords')} <span className="font-normal text-neutral-400">{t('thanks.optional')}</span>
           </label>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={2}
             maxLength={1000}
-            placeholder="What did you like?"
+            placeholder={t('thanks.whatDidYouLike')}
             className="input w-full resize-none"
           />
 
           {(info.canTip || info.alreadyTipped) && (
             <>
               <label className="block text-[13px] font-bold text-neutral-700 mt-5 mb-1.5">
-                💵 Leave a tip <span className="font-normal text-neutral-400">(بقشيش — optional, 100% goes to {info.barberName})</span>
+                {t('thanks.leaveTip')} <span className="font-normal text-neutral-400">{t('thanks.tipNote').replace('{name}', info.barberName)}</span>
               </label>
               {info.alreadyTipped ? (
                 <p className="text-[13px] text-green-700 bg-green-600/10 border border-green-600/25 rounded-xl px-3.5 py-2.5 leading-relaxed">
-                  You already tipped for this haircut — thank you! 🙏
+                  {t('thanks.alreadyTipped')}
                 </p>
               ) : (
                 <>
@@ -192,7 +194,7 @@ function ThanksInner() {
                   <input
                     value={customTip}
                     onChange={(e) => { setCustomTip(e.target.value.replace(/[^0-9.]/g, '')); setTip(null); }}
-                    placeholder="Custom amount"
+                    placeholder={t('thanks.customAmount')}
                     inputMode="decimal"
                     className="input w-full mt-2"
                   />
@@ -211,7 +213,7 @@ function ThanksInner() {
             disabled={busy || stars < 1}
             className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-5 disabled:opacity-50"
           >
-            {busy ? 'Sending…' : 'Send'}
+            {busy ? t('thanks.sending') : t('thanks.send')}
           </button>
         </div>
       ) : null}

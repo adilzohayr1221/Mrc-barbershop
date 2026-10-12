@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { LockIcon, UserIcon } from '@/components/Icons';
 import { CUSTOMER_TOKEN_KEY, CUSTOMER_NAME_KEY } from '@/components/CustomerAuth';
+import { useLang } from '@/components/LanguageContext';
 
 type Mode = 'login' | 'signup';
 
@@ -15,6 +16,7 @@ function safeNext(raw: string | null): string {
 }
 
 function CustomerLoginInner() {
+  const { t } = useLang();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNext(searchParams.get('next'));
@@ -42,15 +44,15 @@ function CustomerLoginInner() {
     setSuccess('');
     const cleanEmail = email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError('Enter a valid email address.');
+      setError(t('login.enterValidEmail'));
       return;
     }
     if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+      setError(t('login.passwordMin6'));
       return;
     }
     if (mode === 'signup' && (name.trim().length < 2 || name.trim().length > 60)) {
-      setError('Enter your name.');
+      setError(t('login.enterYourName'));
       return;
     }
     setBusy(true);
@@ -66,13 +68,13 @@ function CustomerLoginInner() {
         }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Something went wrong');
+      if (!r.ok) throw new Error(d.error || t('login.somethingWrong'));
       if (mode === 'signup') {
         // Auto-login: the signup response already carries a session token.
         if (d.token) {
           localStorage.setItem(CUSTOMER_TOKEN_KEY, d.token);
           localStorage.setItem(CUSTOMER_NAME_KEY, d.customer?.name || '');
-          setSuccess(`Account created — welcome${d.customer?.name ? `, ${d.customer.name}` : ''}! Taking you to the shop…`);
+          setSuccess(t('login.accountCreatedWelcome').replace('{name}', d.customer?.name ? `, ${d.customer.name}` : ''));
           setBusy(false);
           // Brief pause so the success message is actually seen before navigating.
           setTimeout(() => router.replace(next), 1100);
@@ -80,7 +82,7 @@ function CustomerLoginInner() {
         }
         // Signup succeeded but no token came back (shouldn't happen):
         // show it clearly and drop to the login tab with the email prefilled.
-        setSuccess('Account created! Please log in with your new credentials.');
+        setSuccess(t('login.accountCreatedLogin'));
         setMode('login');
         setPassword('');
         setBusy(false);
@@ -90,7 +92,7 @@ function CustomerLoginInner() {
       localStorage.setItem(CUSTOMER_NAME_KEY, d.customer?.name || '');
       router.replace(next);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(e instanceof Error ? e.message : t('login.somethingWrong'));
     }
     setBusy(false);
   }
@@ -99,8 +101,8 @@ function CustomerLoginInner() {
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full flex flex-col">
       <div className="flex flex-col items-center mt-6 mb-7">
         <Image src="/logo.jpg" alt="MRC Barbershop" width={84} height={84} className="hero-logo" />
-        <h1 className="page-title mt-4"><span className="gold-text">Welcome to MRC</span></h1>
-        <p className="page-sub mt-1">Log in or create an account to book your cut.</p>
+        <h1 className="page-title mt-4"><span className="gold-text">{t('login.welcome')}</span></h1>
+        <p className="page-sub mt-1">{t('login.sub')}</p>
       </div>
 
       <div className="card p-5 grid gap-5">
@@ -115,31 +117,31 @@ function CustomerLoginInner() {
                   : 'text-neutral-600'
               }`}
             >
-              {m === 'login' ? 'Log in' : 'Sign up'}
+              {m === 'login' ? t('login.tabLogin') : t('login.tabSignup')}
             </button>
           ))}
         </div>
 
         {mode === 'signup' && (
           <div>
-            <label className="label"><span className="inline-flex items-center gap-1.5"><UserIcon size={14} className="text-gold" /> Your name</span></label>
+            <label className="label"><span className="inline-flex items-center gap-1.5"><UserIcon size={14} className="text-gold" /> {t('login.yourName')}</span></label>
             <input
               className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Full name"
+              placeholder={t('login.fullName')}
               autoComplete="name"
             />
           </div>
         )}
 
         <div>
-          <label className="label">Email</label>
+          <label className="label">{t('login.email')}</label>
           <input
             className="input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder={t('login.emailPlaceholder')}
             inputMode="email"
             autoComplete="email"
             type="email"
@@ -147,12 +149,12 @@ function CustomerLoginInner() {
         </div>
 
         <div>
-          <label className="label"><span className="inline-flex items-center gap-1.5"><LockIcon size={14} className="text-gold" /> Password</span></label>
+          <label className="label"><span className="inline-flex items-center gap-1.5"><LockIcon size={14} className="text-gold" /> {t('login.password')}</span></label>
           <input
             className="input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
+            placeholder={mode === 'signup' ? t('login.passwordPlaceholderSignup') : t('login.passwordPlaceholderLogin')}
             type="password"
             autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
@@ -163,11 +165,11 @@ function CustomerLoginInner() {
         {success && <p className="text-green-800 text-sm bg-green-600/10 border border-green-600/25 rounded-xl px-4 py-3 -mt-2 font-semibold">{success}</p>}
 
         <button onClick={submit} disabled={busy} className="gold-btn rounded-2xl px-6 py-3.5 text-[16px]">
-          {busy ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
+          {busy ? t('login.pleaseWait') : mode === 'login' ? t('login.loginBtn') : t('login.createAccount')}
         </button>
 
         <p className="text-xs text-neutral-500 text-center leading-relaxed -mt-2">
-          Your bookings stay private to your account.
+          {t('login.privateNote')}
         </p>
       </div>
     </main>

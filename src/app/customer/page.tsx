@@ -7,6 +7,7 @@ import { MapPinIcon, CalendarIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
 import DirectionsButton from '@/components/DirectionsButton';
 import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useLang } from '@/components/LanguageContext';
 import ShopIllustration from '@/components/ShopIllustration';
 import LoyaltyCard from '@/components/LoyaltyCard';
 import type { Branch } from '@/lib/types';
@@ -24,12 +25,13 @@ function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number): n
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function fmtMiles(mi: number): string {
-  return mi < 0.1 ? 'Nearby' : mi < 10 ? `${mi.toFixed(1)} mi` : `${Math.round(mi)} mi`;
+function fmtMiles(mi: number, t: (key: string) => string): string {
+  return mi < 0.1 ? t('home.nearby') : mi < 10 ? t('home.miles').replace('{n}', mi.toFixed(1)) : t('home.miles').replace('{n}', String(Math.round(mi)));
 }
 
 export default function CustomerHome() {
   const { checked } = useCustomerAuth();
+  const { t } = useLang();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,17 +94,17 @@ export default function CustomerHome() {
     <main className="flex-1 w-full">
       <div className="px-4 pt-5 pb-6 max-w-2xl mx-auto w-full">
         <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/90">MRC Barbershop</p>
-        <h1 className="page-title mt-1"><span className="gold-text">Choose your branch</span></h1>
-        <p className="page-sub mt-1.5 mb-4">Tap a numbered pin on the map or a branch below.</p>
+        <h1 className="page-title mt-1"><span className="gold-text">{t('home.chooseBranch')}</span></h1>
+        <p className="page-sub mt-1.5 mb-4">{t('home.tapPin')}</p>
 
         <Link
           href="/customer/offers"
           className="block rounded-2xl p-4 mb-4 relative overflow-hidden border border-gold/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:scale-[0.99] transition-transform"
           style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}
         >
-          <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">🔥 Special offer</p>
-          <p className="font-extrabold text-[17px] mt-1 text-white">4 haircuts for $120<span className="text-neutral-400 font-semibold text-[14px]">/month</span></p>
-          <p className="text-[13px] text-neutral-400 mt-0.5">One per week · cancel anytime <span className="text-gold font-bold">→</span></p>
+          <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">🔥 {t('home.specialOffer')}</p>
+          <p className="font-extrabold text-[17px] mt-1 text-white">{t('home.monthlyDeal')}</p>
+          <p className="text-[13px] text-neutral-400 mt-0.5">{t('home.onePerWeek')} <span className="text-gold font-bold">→</span></p>
         </Link>
 
         <Link
@@ -110,9 +112,9 @@ export default function CustomerHome() {
           className="block rounded-2xl p-4 mb-4 relative overflow-hidden border border-gold/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:scale-[0.99] transition-transform"
           style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}
         >
-          <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">✨ New</p>
-          <p className="font-extrabold text-[17px] mt-1 text-white">Mix &amp; Match Weekly Plan</p>
-          <p className="text-[13px] text-neutral-400 mt-0.5">Pick any 4 services in any order — save 25% every month <span className="text-gold font-bold">→</span></p>
+          <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">✨ {t('home.new')}</p>
+          <p className="font-extrabold text-[17px] mt-1 text-white">{t('home.mixMatch')}</p>
+          <p className="text-[13px] text-neutral-400 mt-0.5">{t('home.mixMatchDesc')} <span className="text-gold font-bold">→</span></p>
         </Link>
 
         <LoyaltyCard />
@@ -149,7 +151,7 @@ export default function CustomerHome() {
                         <span className="font-bold text-[16px]">{b.name}</span>
                         {userLoc && (
                           <span className="text-[11px] font-extrabold text-gold bg-gold/10 border border-gold/30 rounded-full px-2 py-0.5 shrink-0">
-                            {fmtMiles(milesBetween(userLoc.lat, userLoc.lng, b.lat, b.lng))}
+                            {fmtMiles(milesBetween(userLoc.lat, userLoc.lng, b.lat, b.lng), t)}
                           </span>
                         )}
                       </span>
@@ -169,7 +171,7 @@ export default function CustomerHome() {
                       href={`/customer/branch/${b.id}`}
                       className="gold-outline-btn rounded-xl px-3 py-2.5 text-center flex items-center justify-center gap-1.5 text-[14px]"
                     >
-                      <CalendarIcon size={16} /> Book appointment
+                      <CalendarIcon size={16} /> {t('home.bookAppointment')}
                     </Link>
                   </div>
                 </div>
