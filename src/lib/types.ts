@@ -23,6 +23,9 @@ export interface Salon {
   ownerEmail: string; // lowercase
   ownerPhone: string;
   city: string;
+  address?: string; // full street address, e.g. "123 Main St"
+  lat?: number; // geocoded at registration (Nominatim)
+  lng?: number;
   status: SalonStatus;
   createdAt: string; // ISO
   approvedAt?: string | null; // ISO

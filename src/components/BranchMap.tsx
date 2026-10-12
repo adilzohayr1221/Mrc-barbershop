@@ -12,22 +12,23 @@ const LABELS_URL =
 
 const SAT_ATTR = 'Imagery &copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics';
 
-// Fit both branches on first mount only.
-function FitBounds({ branches }: { branches: Branch[] }) {
+// Fit all pins (branches + salon pins) on first mount only.
+function FitBounds({ branches, salonPins }: { branches: Branch[]; salonPins: SalonPin[] }) {
   const map = useMap();
   const done = useRef(false);
   useEffect(() => {
     if (done.current) return;
     done.current = true;
-    if (branches.length > 1) {
-      map.fitBounds(
-        L.latLngBounds(branches.map((b) => [b.lat, b.lng] as [number, number])),
-        { padding: [52, 52] }
-      );
-    } else if (branches.length === 1) {
-      map.setView([branches[0].lat, branches[0].lng], 14);
+    const pts: [number, number][] = [
+      ...branches.map((b) => [b.lat, b.lng] as [number, number]),
+      ...salonPins.map((s) => [s.lat, s.lng] as [number, number]),
+    ];
+    if (pts.length > 1) {
+      map.fitBounds(L.latLngBounds(pts), { padding: [52, 52] });
+    } else if (pts.length === 1) {
+      map.setView(pts[0], 14);
     }
-  }, [map, branches]);
+  }, [map, branches, salonPins]);
   return null;
 }
 
@@ -110,14 +111,44 @@ interface UserPos {
   acc: number;
 }
 
+// A platform salon shown as a discovery pin (distinct from MRC branch pins).
+export interface SalonPin {
+  id: string;
+  name: string;
+  slug: string;
+  address: string;
+  city: string;
+  lat: number;
+  lng: number;
+}
+
+// Gold teardrop pin for platform salons — inverted colors vs the black/gold
+// branch pins so customers can tell them apart at a glance.
+function salonPinSvg() {
+  return `<svg viewBox="0 0 34 47" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle class="pin-pulse-ring" cx="17" cy="17" r="14" fill="none" stroke="#1C1A15" stroke-width="2"/><path d="M17 41C12 35 4 28 4 17A13 13 0 1 1 30 17C30 28 22 35 17 41Z" fill="#D4AF37" stroke="#1C1A15" stroke-width="2"/><circle cx="17" cy="17" r="11.5" fill="#1C1A15"/><g transform="translate(5.8,5.8) scale(0.7)">${SHOP_GLYPH}</g></svg>`;
+}
+
+function salonIcon() {
+  return L.divIcon({
+    className: '',
+    html: `<div class="shop-pin salon-pin">${salonPinSvg()}</div>`,
+    iconSize: [34, 47],
+    iconAnchor: [17, 41],
+  });
+}
+
 export default function BranchMap({
   branches,
   selectedId,
   onSelect,
+  salonPins = [],
+  onSalonSelect,
 }: {
   branches: Branch[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  salonPins?: SalonPin[];
+  onSalonSelect?: (slug: string) => void;
 }) {
   const [tilesReady, setTilesReady] = useState(false);
   const [userPos, setUserPos] = useState<UserPos | null>(null);
@@ -180,9 +211,14 @@ export default function BranchMap({
 
   const center: [number, number] = hasBranches
     ? [branches[0].lat, branches[0].lng]
-    : [39.28954, -76.5933];
+    : salonPins.length
+      ? [salonPins[0].lat, salonPins[0].lng]
+      : [39.28954, -76.5933];
 
-  if (!hasBranches) return null;
+  // One stable icon for all salon pins (before the early return: hooks rule).
+  const salonPinIcon = useMemo(() => salonIcon(), []);
+
+  if (!hasBranches && salonPins.length === 0) return null;
 
   return (
     <div className="modern-map">
@@ -200,7 +236,7 @@ export default function BranchMap({
             feel heavy — standard tiles keep the map fast. */}
         <TileLayer url={SAT_URL} attribution={SAT_ATTR} maxZoom={18} maxNativeZoom={18} eventHandlers={tileEvents} />
         <TileLayer url={LABELS_URL} maxZoom={18} maxNativeZoom={18} opacity={1} />
-        <FitBounds branches={branches} />
+        <FitBounds branches={branches} salonPins={salonPins} />
         <FlyToSelected branches={branches} selectedId={selectedId} />
         <ZoomButtons />
         {branches.map((b, i) => {
@@ -219,6 +255,14 @@ export default function BranchMap({
             />
           );
         })}
+        {salonPins.map((s) => (
+          <Marker
+            key={`salon-${s.id}`}
+            position={[s.lat, s.lng]}
+            icon={salonPinIcon}
+            eventHandlers={{ click: () => onSalonSelect?.(s.slug) }}
+          />
+        ))}
         {userPos && (
           <>
             <Circle

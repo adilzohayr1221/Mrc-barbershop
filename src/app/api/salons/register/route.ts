@@ -28,6 +28,28 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, '');
 }
 
+// Geocode a street address with Nominatim (OpenStreetMap). Never throws —
+// returns null on any failure so registration always succeeds.
+async function geocodeAddress(address: string, city: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const q = encodeURIComponent(`${address}, ${city}`);
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1`, {
+      headers: { 'User-Agent': 'MRC-Barbershop/1.0 (salon-onboarding)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const d = await r.json().catch(() => null);
+    const first = Array.isArray(d) ? d[0] : null;
+    const lat = Number(first?.lat);
+    const lng = Number(first?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch (e) {
+    console.warn('[salon-register] geocode failed:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // Public: a salon owner registers his shop for the platform.
 // Creates a PENDING Salon + an inactive SalonOwner; the platform owner
 // approves from the owner dashboard.
@@ -41,16 +63,17 @@ export async function POST(req: Request) {
   const email = String(body?.email ?? '').trim().toLowerCase();
   const phone = String(body?.phone ?? '').trim();
   const city = String(body?.city ?? '').trim();
+  const address = String(body?.address ?? '').trim();
   const password = String(body?.password ?? '');
 
-  if (!salonName || !ownerName || !email || !phone || !city || !password) {
+  if (!salonName || !ownerName || !email || !phone || !city || !address || !password) {
     return NextResponse.json({ error: 'All fields are required.' }, { status: 400 });
   }
   if (!isValidEmail(email)) return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
   }
-  if (salonName.length > 60 || ownerName.length > 60 || city.length > 60 || phone.length > 30) {
+  if (salonName.length > 60 || ownerName.length > 60 || city.length > 60 || phone.length > 30 || address.length > 120) {
     return NextResponse.json({ error: 'A field is too long.' }, { status: 400 });
   }
 
@@ -73,6 +96,8 @@ export async function POST(req: Request) {
 
   const salonId = newId();
   const now = new Date().toISOString();
+  // Geocode the address — non-blocking: a failed lookup still registers the salon.
+  const coords = await geocodeAddress(address, city);
   const salon: Salon = {
     id: salonId,
     name: salonName,
@@ -81,6 +106,9 @@ export async function POST(req: Request) {
     ownerEmail: email,
     ownerPhone: phone,
     city,
+    address,
+    lat: coords?.lat,
+    lng: coords?.lng,
     status: 'pending',
     createdAt: now,
     approvedAt: null,

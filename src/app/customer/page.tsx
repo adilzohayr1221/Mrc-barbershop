@@ -11,6 +11,7 @@ import { useLang } from '@/components/LanguageContext';
 import ShopIllustration from '@/components/ShopIllustration';
 import LoyaltyCard from '@/components/LoyaltyCard';
 import type { Branch } from '@/lib/types';
+import type { SalonPin } from '@/components/BranchMap';
 
 const BranchMap = dynamic(() => import('@/components/BranchMap'), { ssr: false });
 
@@ -33,6 +34,7 @@ export default function CustomerHome() {
   const { checked } = useCustomerAuth();
   const { t } = useLang();
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [salonPins, setSalonPins] = useState<SalonPin[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
@@ -63,6 +65,17 @@ export default function CustomerHome() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Platform salon discovery pins (approved salons with coordinates).
+    // Excludes the salon currently being viewed, if any.
+    fetch('/api/salons/map')
+      .then((r) => r.json())
+      .then((d) => {
+        const pins: SalonPin[] = (d.salons || []).filter(
+          (s: SalonPin) => s.slug !== salonParam
+        );
+        setSalonPins(pins);
+      })
+      .catch(() => {});
     // Get the customer's location once (for nearest-first sorting).
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -124,7 +137,15 @@ export default function CustomerHome() {
         ) : (
           <div className="fade-in">
             <div className="mx-4">
-              <BranchMap branches={sorted} selectedId={selectedId} onSelect={setSelectedId} />
+              <BranchMap
+                branches={sorted}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                salonPins={salonPins}
+                onSalonSelect={(slug) => {
+                  window.location.href = `/customer?salon=${encodeURIComponent(slug)}`;
+                }}
+              />
             </div>
 
             <div className="mt-4">

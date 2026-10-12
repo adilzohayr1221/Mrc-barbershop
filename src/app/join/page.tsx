@@ -10,6 +10,7 @@ export default function JoinPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
+  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -23,6 +24,7 @@ export default function JoinPage() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Enter a valid email address.'); return; }
     if (phone.trim().length < 5) { setError('Enter a valid phone number.'); return; }
     if (city.trim().length < 2) { setError('Enter your city.'); return; }
+    if (address.trim().length < 5) { setError('Enter your shop address.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (password !== confirm) { setError('The two passwords do not match.'); return; }
     setBusy(true);
@@ -36,6 +38,7 @@ export default function JoinPage() {
           email: email.trim(),
           phone: phone.trim(),
           city: city.trim(),
+          address: address.trim(),
           password,
         }),
       });
@@ -97,6 +100,10 @@ export default function JoinPage() {
             <label className="label">City</label>
             <input className="input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" autoComplete="address-level2" />
           </div>
+        </div>
+        <div>
+          <label className="label">Shop address</label>
+          <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="123 Main St" autoComplete="street-address" />
         </div>
         <div>
           <label className="label">Password</label>
