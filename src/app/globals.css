@@ -25,6 +25,16 @@ body {
   max-width: 100%;
 }
 
+/* Single-column grids (card lists, form stacks) must size their column to
+   the container, never to the widest content: an auto column takes the
+   max-content of its items, so a long email or service line would push the
+   whole card past the screen edge and clip its right-side buttons/chips.
+   Grids with an explicit grid-cols-* template are intentional multi-column
+   layouts and keep their own template. */
+.grid:not([class*="grid-cols-"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 body {
   background:
     radial-gradient(1200px 500px at 50% -120px, rgba(212, 175, 55, 0.14), transparent 70%),
