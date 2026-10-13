@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listSalons } from '@/lib/store';
+import { hasCoords } from '@/lib/geocode';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,14 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const salons = await listSalons();
   const pins = salons
-    .filter(
-      (s) =>
-        s.status === 'active' &&
-        typeof s.lat === 'number' &&
-        typeof s.lng === 'number' &&
-        Number.isFinite(s.lat) &&
-        Number.isFinite(s.lng)
-    )
+    .filter((s) => s.status === 'active' && hasCoords(s))
     .map((s) => ({
       id: s.id,
       name: s.name,

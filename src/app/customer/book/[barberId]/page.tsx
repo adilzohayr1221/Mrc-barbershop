@@ -92,7 +92,9 @@ export default function BookPage() {
     for (let i = 0; i < 14; i++) {
       const d = new Date(now);
       d.setDate(now.getDate() + i);
-      const value = d.toISOString().slice(0, 10);
+      // Local date components — toISOString() is UTC and shifts the day
+      // in the evening, mislabelling the "today" chip.
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
       const dayNum = String(d.getDate());
       // On the 1st of a month show the month name instead of the weekday.

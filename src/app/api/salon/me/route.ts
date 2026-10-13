@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSalon, getBarbers, listBookings, inSalon } from '@/lib/store';
 import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
-import { summarizeEarnings } from '@/lib/earnings';
+import { summarizeEarnings, shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const [barbers, bookings] = await Promise.all([getBarbers(), listBookings()]);
   const myBarbers = barbers.filter((b) => inSalon(b, salonId));
   const myBookings = bookings.filter((b) => inSalon(b, salonId));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shopToday();
   const upcomingBookings = myBookings.filter(
     (b) => b.status === 'booked' && b.date >= today
   ).length;

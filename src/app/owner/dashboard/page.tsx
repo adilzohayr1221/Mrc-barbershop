@@ -2080,6 +2080,11 @@ function SalonsTab() {
                   {s.salon.ownerName} · {s.salon.city}
                 </div>
                 <div className="text-xs text-neutral-500 mt-0.5">{s.ownerEmail} · {s.salon.ownerPhone}</div>
+                {!(typeof s.salon.lat === 'number' && typeof s.salon.lng === 'number' && (s.salon.lat !== 0 || s.salon.lng !== 0)) && (
+                  <div className="text-xs font-semibold text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 mt-2">
+                    ⚠️ No map location yet — the address could not be found. Approval will retry automatically; if it still fails, this salon will not appear on the customer map.
+                  </div>
+                )}
                 <div className="flex gap-2.5 mt-3">
                   <button
                     onClick={() => act(s.salon.id, 'approve')}
@@ -2121,6 +2126,11 @@ function SalonsTab() {
                 <div className="text-sm text-neutral-600 mt-1.5">
                   {s.salon.city} · 💈 {s.barberCount} barber{s.barberCount === 1 ? '' : 's'} · 📅 {s.bookingCount} booking{s.bookingCount === 1 ? '' : 's'} ({s.pendingBookings} upcoming)
                 </div>
+                {s.salon.status === 'active' && !(typeof s.salon.lat === 'number' && typeof s.salon.lng === 'number' && (s.salon.lat !== 0 || s.salon.lng !== 0)) && (
+                  <div className="text-xs font-semibold text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5 mt-2">
+                    ⚠️ Not on the customer map — no location for this salon&apos;s address.
+                  </div>
+                )}
                 <div className="flex gap-2.5 mt-3">
                   <button
                     onClick={() => copyLinks(s.salon)}

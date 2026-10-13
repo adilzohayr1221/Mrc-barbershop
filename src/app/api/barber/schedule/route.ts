@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listBookings, listReviews, getServices, getBarbers, getCustomers, inSalon } from '@/lib/store';
 import { requireBarber } from '@/lib/auth';
 import { barberSalonId } from '@/lib/salonScope';
+import { shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,9 @@ export async function GET(req: Request) {
   const myCustomers = customers.filter((c) => inSalon(c, salonId));
   const barber = barbers.find((b) => b.id === session.barberId);
   const mine = myBookings.filter((b) => b.barberId === session.barberId);
-  const today = new Date().toISOString().slice(0, 10);
+  // Shop-local "today" (America/New_York) — UTC here made evening bookings
+  // vanish from the barber's schedule after 8 PM Eastern.
+  const today = shopToday();
   const todayList = mine.filter((b) => b.date === today);
   const upcoming = mine.filter((b) => b.date + b.time >= today + '00:00').slice(0, 20);
   const barberReviews = myReviews.filter((r) => r.barberId === session.barberId);

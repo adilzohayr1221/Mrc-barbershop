@@ -6,6 +6,8 @@ import {
   getBranches, saveBranches, newId,
 } from '@/lib/store';
 import { requireOwner } from '@/lib/auth';
+import { geocodeAddress, hasCoords } from '@/lib/geocode';
+import { shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [salons, barbers, bookings] = await Promise.all([listSalons(), getBarbers(), listBookings()]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shopToday();
   const enriched = await Promise.all(
     salons.map(async (salon) => {
       const owner = await getSalonOwnerBySalon(salon.id);
@@ -58,6 +60,15 @@ export async function POST(req: Request) {
     if (salon.status !== 'pending') {
       return NextResponse.json({ error: 'Only pending salons can be approved.' }, { status: 400 });
     }
+    // Registration geocodes once and a failure is silent — retry here so an
+    // approved salon never goes live without a map location.
+    if (!hasCoords(salon) && salon.address) {
+      const coords = await geocodeAddress(salon.address, salon.city);
+      if (coords) {
+        salon.lat = coords.lat;
+        salon.lng = coords.lng;
+      }
+    }
     salon.status = 'active';
     salon.approvedAt = now;
     await saveSalon(salon);
@@ -68,19 +79,40 @@ export async function POST(req: Request) {
     }
     // One shop per salon owner: auto-create their single branch from the
     // salon's registered address. Salon owners cannot add branches themselves.
+    // Only create the branch when we have real coordinates — a 0,0 branch
+    // would pin the shop in the ocean and break distance sorting.
     try {
-      const existing = (await getBranches()).filter((b) => inSalon(b, salon.id));
-      if (existing.length === 0) {
+      if (hasCoords(salon)) {
         const branches = await getBranches();
-        branches.push({
-          id: newId(),
-          name: salon.name,
-          address: salon.address || salon.city || '',
-          lat: salon.lat ?? 0,
-          lng: salon.lng ?? 0,
-          salonId: salon.id,
-        });
-        await saveBranches(branches);
+        const mine = branches.filter((b) => inSalon(b, salon.id));
+        if (mine.length === 0) {
+          branches.push({
+            id: newId(),
+            name: salon.name,
+            address: salon.address || salon.city || '',
+            lat: salon.lat as number,
+            lng: salon.lng as number,
+            salonId: salon.id,
+          });
+          await saveBranches(branches);
+        } else {
+          // Repair a branch created earlier with placeholder 0,0 coords.
+          let changed = false;
+          for (const b of mine) {
+            if (!hasCoords(b)) {
+              b.lat = salon.lat as number;
+              b.lng = salon.lng as number;
+              changed = true;
+            }
+          }
+          if (changed) await saveBranches(branches);
+        }
+      } else {
+        console.warn(
+          '[salon-approve] no coordinates for salon',
+          salon.id,
+          '— branch not created; salon will not appear on the customer map until its address geocodes.'
+        );
       }
     } catch (e) {
       console.error('auto-branch creation failed for salon', salon.id, e);

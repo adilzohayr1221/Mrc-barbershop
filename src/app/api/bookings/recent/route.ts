@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireCustomer } from '@/lib/auth';
 import { listBookings, getBarbers, getServices } from '@/lib/store';
+import { shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,8 +11,11 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const session = requireCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 14);
+  // 14 days before shop-local today, as a YYYY-MM-DD string.
+  const [ty, tm, td] = shopToday().split('-').map(Number);
+  const cutoffDate = new Date(Date.UTC(ty, tm - 1, td, 12));
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 14);
+  const cutoffStr = cutoffDate.toISOString().slice(0, 10);
   const [bookings, barbers, services] = await Promise.all([
     listBookings(),
     getBarbers(),
@@ -24,7 +28,7 @@ export async function GET(req: Request) {
       (b) =>
         b.customerId === session.customerId &&
         b.status !== 'cancelled' &&
-        b.date >= cutoff.toISOString().slice(0, 10)
+        b.date >= cutoffStr
     )
     .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
     .slice(0, 20)

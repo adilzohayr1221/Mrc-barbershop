@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listSalons, saveSalon, saveSalonOwner, getSalonOwnerByEmail, newId } from '@/lib/store';
 import { hashPassword, isValidEmail } from '@/lib/auth';
+import { geocodeAddress } from '@/lib/geocode';
 import type { Salon, SalonOwner } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -26,28 +27,6 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-}
-
-// Geocode a street address with Nominatim (OpenStreetMap). Never throws —
-// returns null on any failure so registration always succeeds.
-async function geocodeAddress(address: string, city: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const q = encodeURIComponent(`${address}, ${city}`);
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&limit=1`, {
-      headers: { 'User-Agent': 'MRC-Barbershop/1.0 (salon-onboarding)' },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) return null;
-    const d = await r.json().catch(() => null);
-    const first = Array.isArray(d) ? d[0] : null;
-    const lat = Number(first?.lat);
-    const lng = Number(first?.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
-  } catch (e) {
-    console.warn('[salon-register] geocode failed:', e instanceof Error ? e.message : e);
-    return null;
-  }
 }
 
 // Public: a salon owner registers his shop for the platform.
