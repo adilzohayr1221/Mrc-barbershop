@@ -1,5 +1,5 @@
 import { getBarbers, listBookings, listReviews } from './store';
-import { isHaircutDone, shopToday } from './earnings';
+import { isHaircutDone, shopToday, shopDateOf } from './earnings';
 import { PLATFORM_SALON_ID } from './types';
 
 export interface LeaderboardEntry {
@@ -42,7 +42,7 @@ export async function getLeaderboard(salonId: string): Promise<{
       if (isHaircutDone(bk, today)) cuts++;
     }
     const monthReviews = reviews.filter(
-      (r) => r.barberId === b.id && r.createdAt.slice(0, 7) === month
+      (r) => r.barberId === b.id && shopDateOf(r.createdAt).slice(0, 7) === month
     );
     const avgRating = monthReviews.length
       ? monthReviews.reduce((s, r) => s + r.rating, 0) / monthReviews.length

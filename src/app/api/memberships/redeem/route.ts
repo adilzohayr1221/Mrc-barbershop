@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireBarber } from '@/lib/auth';
 import { getCustomer, listRedemptions, saveRedemption, saveMembership, listBookings, saveBooking, saveCompletionPhoto, newId } from '@/lib/store';
 import { getMembershipById, buildWeeks, membershipPayoutPerWeek } from '@/lib/membership';
+import { shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -104,10 +105,10 @@ export async function POST(req: Request) {
 
   // Auto-link today's pending membership booking for THIS plan with this barber, if any.
   // (Legacy bookings without a membershipId still link to the first matching plan.)
-  const today = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
+  // Shop-local today — server-local getters are UTC on Vercel and would
+  // compute tomorrow's date every evening (8 PM–midnight ET), silently
+  // missing the auto-link.
+  const today = shopToday();
   let bookingId: string | null = null;
   try {
     const bookings = await listBookings();

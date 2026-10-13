@@ -108,25 +108,40 @@ export default function BookPage() {
   // hours, the default shop slots apply (legacy behavior).
   const availableTimes = useMemo(() => {
     if (!date) return TIMES;
-    if (!barber?.workingHours) return TIMES;
-    const hours = barber.workingHours[String(weekdayOf(date)) as '0' | '1' | '2' | '3' | '4' | '5' | '6'];
-    if (!hours || !hours.length) return [];
-    const slots = new Set<string>();
-    for (const h of hours) {
-      const hh = h.slice(0, 2);
-      slots.add(`${hh}:00`);
-      slots.add(`${hh}:30`);
+    let base: string[];
+    if (!barber?.workingHours) {
+      base = TIMES;
+    } else {
+      const hours = barber.workingHours[String(weekdayOf(date)) as '0' | '1' | '2' | '3' | '4' | '5' | '6'];
+      if (!hours || !hours.length) return [];
+      const slots = new Set<string>();
+      for (const h of hours) {
+        const hh = h.slice(0, 2);
+        slots.add(`${hh}:00`);
+        slots.add(`${hh}:30`);
+      }
+      base = TIMES.filter((t) => slots.has(t));
     }
-    return TIMES.filter((t) => slots.has(t));
+    // For today, hide slots that have already started so nobody can book
+    // (and pay for) a time in the past. The server enforces shop time too.
+    const now = new Date();
+    const todayValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (date === todayValue) {
+      const cur = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      base = base.filter((t) => t > cur);
+    }
+    return base;
   }, [date, barber]);
-
-  const dayClosed = !!date && !!barber?.workingHours && availableTimes.length === 0;
 
   function isDayClosed(iso: string) {
     if (!barber?.workingHours) return false;
     const hours = barber.workingHours[String(weekdayOf(iso)) as '0' | '1' | '2' | '3' | '4' | '5' | '6'];
     return !hours || !hours.length;
   }
+
+  // "Closed" means the barber doesn't work that weekday at all — not that
+  // today's remaining slots have all passed (availableTimes filters those).
+  const dayClosed = !!date && isDayClosed(date);
 
   // Slots already booked for the selected day — shown as unavailable so a
   // booked appointment can't be booked twice.

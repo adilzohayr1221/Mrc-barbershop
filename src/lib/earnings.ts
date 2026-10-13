@@ -28,6 +28,24 @@ export function shopToday(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
+/** Shop-local date (YYYY-MM-DD) of an ISO timestamp. */
+export function shopDateOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
+/** Current wall-clock time (HH:MM, 24h) in the shop's timezone. */
+export function shopNowTime(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${hh}:${mm}`;
+}
+
 export function mondayOf(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12));
@@ -115,7 +133,7 @@ export function summarizeGiftEarnings(gifts: Gift[], today = shopToday()): Perio
     if (g.status !== 'redeemed' || !g.redeemedAt) continue;
     const v = g.price;
     if (v <= 0) continue;
-    const d = g.redeemedAt.slice(0, 10);
+    const d = shopDateOf(g.redeemedAt);
     if (d < monthStart) continue;
     month += v;
     if (d >= weekStart) week += v;
@@ -136,7 +154,7 @@ export function countGiftHaircuts(gifts: Gift[], today = shopToday()): HaircutCo
   for (const g of gifts) {
     if (g.status !== 'redeemed' || !g.redeemedAt) continue;
     a++;
-    const d = g.redeemedAt.slice(0, 10);
+    const d = shopDateOf(g.redeemedAt);
     if (d < monthStart) continue;
     m++;
     if (d >= weekStart) w++;
@@ -155,7 +173,7 @@ export function summarizeTipEarnings(tips: Tip[], today = shopToday()): PeriodTo
   for (const t of tips) {
     const v = t.amount;
     if (v <= 0) continue;
-    const d = t.createdAt.slice(0, 10);
+    const d = shopDateOf(t.createdAt);
     if (d < monthStart) continue;
     month += v;
     if (d >= weekStart) week += v;

@@ -5,6 +5,7 @@ import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
 import { buildWeeks, getMembershipById, listActiveMemberships } from '@/lib/membership';
+import { shopToday, shopNowTime } from '@/lib/earnings';
 import { sendPushToUser } from '@/lib/push';
 import type { Booking, WorkingHours } from '@/lib/types';
 
@@ -48,6 +49,14 @@ export async function POST(req: Request) {
   const branch = branches.find((b) => b.id === branchId);
   if (!barber || !service || !branch) return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   if (!barber.branchIds.includes(branchId)) return NextResponse.json({ error: 'Barber not at this branch' }, { status: 400 });
+
+  // Never book a slot that has already started (shop-local wall clock).
+  // The customer pays at booking time, and a past appointment is instantly
+  // invisible in "My appointments" — money must never land on one.
+  const todayStr = shopToday();
+  if (date < todayStr || (date === todayStr && time <= shopNowTime())) {
+    return NextResponse.json({ error: 'This time has already passed. Please pick a later time.' }, { status: 400 });
+  }
 
   // Enforce the barber's own working hours (he sets them hour by hour).
   if (barber.workingHours) {

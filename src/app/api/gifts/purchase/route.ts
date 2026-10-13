@@ -91,7 +91,9 @@ export async function POST(req: Request) {
     status: 'active',
     token: randomBytes(16).toString('hex'),
     shortCode: makeShortCode(new Set(existing.map((g) => g.shortCode))),
-    expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    // "Valid 12 months" means 12 calendar months — a flat 365 days would
+    // expire a day early across a Feb 29.
+    expiresAt: (() => { const e = new Date(now); e.setMonth(e.getMonth() + 12); return e.toISOString(); })(),
     stripePaymentIntentId: paymentIntentId,
     createdAt: now.toISOString(),
     redeemedAt: null,
