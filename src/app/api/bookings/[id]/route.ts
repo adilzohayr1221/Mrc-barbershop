@@ -31,20 +31,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   let refundError: string | null = null;
   if (nextStatus === 'cancelled') {
     // Auto-refund prepaid bookings so the customer gets their money back.
-    // A fully-paid booking refunds both the deposit and the collected remainder.
+    // A fully-paid booking refunds both the deposit and the collected
+    // remainder. Each leg is refunded and recorded SEPARATELY: if one leg
+    // succeeds and the other fails, the books must show exactly that —
+    // paymentStatus only becomes 'refunded' when every leg is refunded,
+    // and the failure is stored on the booking (not just returned once),
+    // so it can't vanish with the response nobody reads.
     if (isStripeConfigured() && (booking.paymentStatus === 'paid' || booking.paymentStatus === 'paid_in_full')) {
-      try {
-        const stripe = getStripe();
-        if (booking.paymentIntentId) {
-          await stripe.refunds.create({ payment_intent: booking.paymentIntentId });
+      const stripe = getStripe();
+      const legs: { key: 'deposit' | 'remainder'; pi: string }[] = [];
+      if (booking.paymentIntentId) legs.push({ key: 'deposit', pi: booking.paymentIntentId });
+      if (booking.paymentStatus === 'paid_in_full' && booking.remainingPaymentIntentId) {
+        legs.push({ key: 'remainder', pi: booking.remainingPaymentIntentId });
+      }
+      const doneLegs = new Set(booking.refundedLegs ?? []);
+      let anyFailed = false;
+      for (const leg of legs) {
+        if (doneLegs.has(leg.key)) continue;
+        try {
+          await stripe.refunds.create(
+            { payment_intent: leg.pi },
+            { idempotencyKey: `refund-${booking.id}-${leg.key}` }
+          );
+          doneLegs.add(leg.key);
+        } catch (e) {
+          console.error('Stripe refund failed', leg.key, e);
+          anyFailed = true;
         }
-        if (booking.paymentStatus === 'paid_in_full' && booking.remainingPaymentIntentId) {
-          await stripe.refunds.create({ payment_intent: booking.remainingPaymentIntentId });
-        }
+      }
+      booking.refundedLegs = [...doneLegs];
+      if (legs.length > 0 && legs.every((l) => doneLegs.has(l.key))) {
         booking.paymentStatus = 'refunded';
-      } catch (e) {
-        console.error('Stripe refund failed', e);
+        booking.refundError = null;
+      } else if (anyFailed) {
         refundError = 'The booking was cancelled but the automatic refund failed — please refund it manually from the Stripe dashboard.';
+        booking.refundError = refundError;
       }
     }
   }

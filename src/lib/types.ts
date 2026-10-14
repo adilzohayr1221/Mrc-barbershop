@@ -153,6 +153,8 @@ export interface Booking extends TenantScoped {
   membershipId?: string | null; // when booked with a plan: which plan it belongs to
   payoutTransferId?: string | null; // Stripe Transfer ID for the barber's payout
   payoutAmount?: number | null; // dollars transferred to the barber
+  refundedLegs?: string[]; // cancel-refund legs completed: 'deposit' | 'remainder'
+  refundError?: string | null; // set when a cancel auto-refund failed/partial — staff must refund manually
   servicePrice?: number | null; // total service price agreed at booking time
     // (discounted when the customer had an approved discount) — the remaining
     // balance is always computed from this, never from the live service price.

@@ -17,6 +17,7 @@ export function CancelBookingButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [refundWarning, setRefundWarning] = useState('');
 
   async function doCancel() {
     setBusy(true);
@@ -28,13 +29,30 @@ export function CancelBookingButton({
         body: JSON.stringify({ status: 'cancelled' }),
       });
       if (!r.ok) throw new Error(`cancel failed (${r.status})`);
+      const data = await r.json().catch(() => null);
       setOpen(false);
+      if (data?.refundError) {
+        // The booking IS cancelled, but the customer's refund failed.
+        // Keep this component mounted with the warning in place of the
+        // button — flipping the row to "cancelled" here would unmount
+        // the button and the warning would vanish before anyone reads it.
+        setRefundWarning(String(data.refundError));
+        return;
+      }
       onCancelled();
     } catch {
       setError('Could not cancel. Please try again.');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (refundWarning) {
+    return (
+      <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-300 rounded-lg px-2.5 py-2 max-w-xs">
+        ⚠️ Cancelled, but the refund FAILED. {refundWarning}
+      </p>
+    );
   }
 
   return (
