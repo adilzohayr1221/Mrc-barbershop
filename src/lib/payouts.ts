@@ -1,5 +1,10 @@
 import { getStripe, toCents } from '@/lib/stripe';
-import { getBarbers, saveBarbers, getShopDebt, applyShopDeduction } from '@/lib/store';
+import {
+  getBarbers, saveBarbers, getShopDebt, applyShopDeduction,
+  listBookings, saveBooking, listGifts, saveGift, listTips, saveTip,
+  listMemberships, listRedemptions, saveRedemption,
+} from '@/lib/store';
+import { membershipPayoutPerWeek } from '@/lib/membership';
 
 // Barber payouts via Stripe Connect.
 // Money flow: all customer charges land in the owner's (platform) Stripe
@@ -119,4 +124,185 @@ export async function refreshConnectStatus(barberId: string): Promise<{ payoutsE
     await saveBarbers(barbers);
   }
   return { payoutsEnabled, detailsSubmitted };
+}
+
+// ---------------------------------------------------------------------------
+// Failed-payout retry sweep.
+//
+// A payout can fail at completion time even though the customer paid — most
+// commonly because Stripe has not yet released the charge's funds to the
+// platform's available balance (first live charges are held for days). The
+// original routes persist the failure (no transfer id), and this sweep —
+// run by the reminders cron — retries until the money lands, so a barber's
+// pay is never stranded silently.
+//
+// Double-pay safety: before transferring, the sweep looks for an existing
+// Stripe transfer to the same barber carrying the same source metadata
+// (covers a first attempt whose response was lost after the transfer was
+// created — Stripe idempotency keys only live 24h) and adopts it instead.
+// Retries also reuse the original idempotency key.
+export interface PayoutRetryOutcome {
+  checked: number;
+  paid: number;
+  adopted: number;
+  stillFailing: number;
+}
+
+const RETRY_WINDOW_DAYS = 45;
+
+async function findExistingTransfer(
+  destination: string,
+  matchMeta: (m: Record<string, string>) => boolean,
+  whenIso: string
+): Promise<string | null> {
+  try {
+    const t = new Date(whenIso).getTime();
+    const list = await getStripe().transfers.list({
+      destination,
+      created: {
+        gte: Math.floor((t - 3600_000) / 1000),
+        lte: Math.floor((t + 48 * 3600_000) / 1000),
+      },
+      limit: 100,
+    });
+    const hit = list.data.find((tr) => matchMeta((tr.metadata ?? {}) as Record<string, string>));
+    return hit?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
+  const out: PayoutRetryOutcome = { checked: 0, paid: 0, adopted: 0, stillFailing: 0 };
+  const cutoff = Date.now() - RETRY_WINDOW_DAYS * 24 * 3600 * 1000;
+  const [barbers, bookings, gifts, tips, memberships] = await Promise.all([
+    getBarbers(),
+    listBookings(),
+    listGifts(),
+    listTips(),
+    listMemberships(),
+  ]);
+  const barberById = new Map(barbers.map((b) => [b.id, b]));
+
+  async function attempt(o: {
+    barberId: string;
+    amount: number;
+    idempotencyKey: string;
+    description: string;
+    metadata: Record<string, string>;
+    matchMeta: (m: Record<string, string>) => boolean;
+    whenIso: string;
+    onSuccess: (transferId: string | null) => Promise<void>;
+  }): Promise<void> {
+    const barber = barberById.get(o.barberId);
+    if (!barber?.stripeAccountId) return;
+    if (!(o.amount > 0)) return;
+    if (new Date(o.whenIso).getTime() < cutoff) return;
+    out.checked++;
+    const existing = await findExistingTransfer(barber.stripeAccountId, o.matchMeta, o.whenIso);
+    if (existing) {
+      await o.onSuccess(existing);
+      out.adopted++;
+      return;
+    }
+    const result = await payoutToBarber(o.barberId, o.amount, {
+      idempotencyKey: o.idempotencyKey,
+      description: o.description,
+      metadata: o.metadata,
+    });
+    if (result.ok) {
+      await o.onSuccess(result.transferId ?? null);
+      out.paid++;
+    } else {
+      out.stillFailing++;
+    }
+  }
+
+  // Booking payouts (photo-verified completions).
+  for (const b of bookings) {
+    if (!b.completedAt || b.payoutTransferId || (b.payoutAmount ?? 0) > 0) continue;
+    if (b.status === 'cancelled') continue;
+    if (b.paymentStatus !== 'paid' && b.paymentStatus !== 'paid_in_full') continue;
+    const amount = Math.round((b.amountPaid ?? 0) * 100) / 100;
+    await attempt({
+      barberId: b.barberId,
+      amount,
+      idempotencyKey: `payout-booking-${b.id}`,
+      description: `MRC Barbershop — haircut payout (${b.date} ${b.time})`,
+      metadata: { kind: 'booking_payout', bookingId: b.id },
+      matchMeta: (m) => m.bookingId === b.id,
+      whenIso: b.completedAt,
+      onSuccess: async (tid) => {
+        b.payoutTransferId = tid;
+        b.payoutAmount = amount;
+        await saveBooking(b);
+      },
+    });
+  }
+
+  // Gift payouts (full gift value to the redeeming barber).
+  for (const g of gifts) {
+    if (g.status !== 'redeemed' || !g.redeemedAt || !g.redeemedByBarberId) continue;
+    if (g.payoutTransferId || (g.payoutAmount ?? 0) > 0) continue;
+    await attempt({
+      barberId: g.redeemedByBarberId,
+      amount: g.price,
+      idempotencyKey: `payout-gift-${g.id}`,
+      description: `MRC Barbershop — gift haircut payout (${g.serviceName})`,
+      metadata: { kind: 'gift_payout', giftId: g.id },
+      matchMeta: (m) => m.giftId === g.id,
+      whenIso: g.redeemedAt,
+      onSuccess: async (tid) => {
+        g.payoutTransferId = tid;
+        g.payoutAmount = g.price;
+        await saveGift(g);
+      },
+    });
+  }
+
+  // Tip payouts (100% to the barber).
+  for (const t of tips) {
+    if (!t.payoutFailed || t.payoutTransferId) continue;
+    await attempt({
+      barberId: t.barberId,
+      amount: t.amount,
+      idempotencyKey: `payout-tip-${t.id}`,
+      description: `MRC Barbershop — customer tip ($${t.amount.toFixed(2)})`,
+      metadata: { kind: 'tip_payout', tipId: t.id },
+      matchMeta: (m) => m.tipId === t.id,
+      whenIso: t.createdAt,
+      onSuccess: async (tid) => {
+        t.payoutTransferId = tid;
+        t.payoutFailed = false;
+        await saveTip(t);
+      },
+    });
+  }
+
+  // Membership payouts — only redemptions whose outcome was persisted as
+  // failed (older redemptions predate outcome persistence and are never
+  // touched, so a payout that landed back then can't be duplicated).
+  for (const m of memberships) {
+    const reds = await listRedemptions(m.id).catch(() => []);
+    for (const r of reds) {
+      if (!r.payoutFailed || r.payoutTransferId) continue;
+      const amount = membershipPayoutPerWeek(m);
+      await attempt({
+        barberId: r.barberId,
+        amount,
+        idempotencyKey: `payout-membership-${m.id}-${r.weekIndex}-${r.periodStart}`,
+        description: `MRC Barbershop — plan haircut payout (Week ${r.weekIndex + 1})`,
+        metadata: { kind: 'membership_payout', membershipId: m.id },
+        matchMeta: (md) => md.kind === 'membership_payout' && md.membershipId === m.id,
+        whenIso: r.redeemedAt,
+        onSuccess: async (tid) => {
+          r.payoutTransferId = tid;
+          r.payoutFailed = false;
+          await saveRedemption(r);
+        },
+      });
+    }
+  }
+
+  return out;
 }

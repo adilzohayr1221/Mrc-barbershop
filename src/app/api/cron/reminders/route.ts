@@ -13,8 +13,18 @@ export async function POST(req: Request) {
   if (!secret || req.headers.get('x-cron-secret') !== secret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  // Retry barber payouts that failed when a haircut completed (usually
+  // Stripe had not released the funds yet). Idempotent and double-pay
+  // safe — see retryFailedPayouts. Runs even if push is not configured.
+  let payoutRetry: unknown = null;
+  try {
+    const { retryFailedPayouts } = await import('@/lib/payouts');
+    payoutRetry = await retryFailedPayouts();
+  } catch (e) {
+    console.error('[cron] payout retry failed', e);
+  }
   if (!isPushConfigured()) {
-    return NextResponse.json({ ok: true, skipped: 'push not configured' });
+    return NextResponse.json({ ok: true, skipped: 'push not configured', payoutRetry });
   }
 
   const nowNY = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -89,5 +99,5 @@ export async function POST(req: Request) {
       }
     }
   }
-  return NextResponse.json({ ok: true, sent });
+  return NextResponse.json({ ok: true, sent, payoutRetry });
 }

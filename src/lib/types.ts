@@ -193,6 +193,8 @@ export interface MembershipRedemption extends TenantScoped {
   redeemedAt: string; // ISO
   bookingId?: string | null; // auto-linked booking that day, if any
   photoPath?: string | null; // proof-of-completion photo (camera) — required before payout
+  payoutTransferId?: string | null; // Stripe Transfer ID for the barber's payout
+  payoutFailed?: boolean; // payout attempt failed — retried automatically (see retryFailedPayouts)
 }
 
 // In-app chat between customer and barber, one thread per booking.

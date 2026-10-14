@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireBarber } from '@/lib/auth';
-import { getCustomer, listRedemptions, saveRedemption, saveMembership, listBookings, saveBooking, saveCompletionPhoto, newId } from '@/lib/store';
+import { getCustomer, listRedemptions, getRedemption, saveRedemption, saveMembership, listBookings, saveBooking, saveCompletionPhoto, newId } from '@/lib/store';
 import { getMembershipById, buildWeeks, membershipPayoutPerWeek } from '@/lib/membership';
 import { shopToday } from '@/lib/earnings';
 
@@ -164,6 +164,7 @@ export async function POST(req: Request) {
   // immediately ($30 for the standard $120 plan). Total payouts can never
   // exceed what the customer paid for the plan.
   let payoutFailed: string | null = null;
+  let payoutTransferId: string | null = null;
   try {
     const { payoutToBarber } = await import('@/lib/payouts');
     const payoutAmount = membershipPayoutPerWeek(membership);
@@ -172,10 +173,23 @@ export async function POST(req: Request) {
       description: `MRC Barbershop — plan haircut payout (${current.label})`,
       metadata: { kind: 'membership_payout', membershipId: membership.id },
     });
-    if (!result.ok) payoutFailed = result.error ?? 'Payout failed.';
+    if (result.ok) payoutTransferId = result.transferId ?? null;
+    else payoutFailed = result.error ?? 'Payout failed.';
   } catch (e) {
     payoutFailed = e instanceof Error ? e.message : 'Payout failed.';
     console.error('[payout] membership payout failed', payoutFailed);
+  }
+  // Persist the payout outcome on the redemption so a failure is retried
+  // automatically by the payout sweep instead of stranding the barber's pay.
+  try {
+    const red = await getRedemption(redemptionId);
+    if (red) {
+      red.payoutTransferId = payoutTransferId;
+      red.payoutFailed = payoutFailed != null;
+      await saveRedemption(red);
+    }
+  } catch (e) {
+    console.error('[redeem] payout outcome persist failed', e);
   }
 
   // Ask the customer to rate + tip (the haircut is done — photo taken).
