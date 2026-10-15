@@ -2,6 +2,7 @@ import { getStripe, toCents } from '@/lib/stripe';
 import {
   getBarbers, saveBarbers, getShopDebt, applyShopDeduction,
   listBookings, saveBooking, listGifts, saveGift, listTips, saveTip,
+  listWalkinPayments, saveWalkinPayment,
   listMemberships, listRedemptions, saveRedemption,
 } from '@/lib/store';
 import { membershipPayoutPerWeek } from '@/lib/membership';
@@ -175,12 +176,13 @@ async function findExistingTransfer(
 export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
   const out: PayoutRetryOutcome = { checked: 0, paid: 0, adopted: 0, stillFailing: 0 };
   const cutoff = Date.now() - RETRY_WINDOW_DAYS * 24 * 3600 * 1000;
-  const [barbers, bookings, gifts, tips, memberships] = await Promise.all([
+  const [barbers, bookings, gifts, tips, memberships, walkins] = await Promise.all([
     getBarbers(),
     listBookings(),
     listGifts(),
     listTips(),
     listMemberships(),
+    listWalkinPayments(),
   ]);
   const barberById = new Map(barbers.map((b) => [b.id, b]));
 
@@ -275,6 +277,25 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
         t.payoutTransferId = tid;
         t.payoutFailed = false;
         await saveTip(t);
+      },
+    });
+  }
+
+  // Walk-in QR payouts (100% to the barber).
+  for (const w of walkins) {
+    if (!w.payoutFailed || w.payoutTransferId) continue;
+    await attempt({
+      barberId: w.barberId,
+      amount: w.amount,
+      idempotencyKey: `payout-walkin-${w.id}`,
+      description: `MRC Barbershop — walk-in payment ($${w.amount.toFixed(2)})`,
+      metadata: { kind: 'walkin_payout', walkinId: w.id },
+      matchMeta: (m) => m.walkinId === w.id,
+      whenIso: w.createdAt,
+      onSuccess: async (tid) => {
+        w.payoutTransferId = tid;
+        w.payoutFailed = false;
+        await saveWalkinPayment(w);
       },
     });
   }

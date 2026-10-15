@@ -106,6 +106,7 @@ export async function GET(req: Request) {
       connected: true,
       payoutsEnabled: status.payoutsEnabled,
       detailsSubmitted: status.detailsSubmitted,
+      barberId: barber.id,
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Could not check status.';

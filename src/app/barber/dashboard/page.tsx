@@ -8,6 +8,7 @@ import { CancelBookingButton, CancelledLabel, NoShowLabel } from '@/components/C
 import { DeleteBookingButton } from '@/components/DeleteBookingButton';
 import { CollectScanner } from '@/components/CollectScanner';
 import PaymentStep from '@/components/PaymentStep';
+import { QRCodeSVG } from 'qrcode.react';
 import { EnableNotifications } from '@/components/EnableNotifications';
 import { NoShowButton } from '@/components/NoShowButton';
 import { ChatModal } from '@/components/ChatModal';
@@ -122,14 +123,16 @@ function ChatBtn({ label, unreadCount, onOpen }: { label: string; unreadCount: n
 // haircut payouts directly. We never see or store bank details.
 function PayoutsCard({ token }: { token: string }) {
   const { t } = useLang();
-  const [status, setStatus] = useState<{ connected: boolean; payoutsEnabled: boolean } | null>(null);
+  const [status, setStatus] = useState<{ connected: boolean; payoutsEnabled: boolean; barberId?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [origin, setOrigin] = useState('');
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const load = () => {
     fetch('/api/barber/connect', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { if (!d.error) setStatus({ connected: d.connected, payoutsEnabled: d.payoutsEnabled }); })
+      .then((d) => { if (!d.error) setStatus({ connected: d.connected, payoutsEnabled: d.payoutsEnabled, barberId: d.barberId }); })
       .catch(() => {});
   };
   useEffect(load, [token]);
@@ -192,6 +195,18 @@ function PayoutsCard({ token }: { token: string }) {
       <p className="text-[11px] text-neutral-400 mt-3 leading-relaxed">
         {t('barber.payouts.secure_note')}
       </p>
+      {status?.connected && status.barberId && origin && (
+        <div className="mt-4 pt-4 border-t border-gold/25 flex flex-col items-center text-center">
+          <div className="font-extrabold text-[15px] text-[#141414]">Walk-in payments</div>
+          <p className="text-[12px] text-neutral-500 mt-1 max-w-xs leading-relaxed">
+            No appointment? Your customer scans this code and pays you directly — card, Apple Pay, or bank.
+          </p>
+          <div className="mt-3 bg-white rounded-2xl border border-gold/40 p-3">
+            <QRCodeSVG value={`${origin}/pay/${status.barberId}`} size={168} level="M" />
+          </div>
+          <p className="text-[11px] text-neutral-400 mt-2 break-all">{`${origin}/pay/${status.barberId}`}</p>
+        </div>
+      )}
     </div>
   );
 }

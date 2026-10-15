@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { listBookings, getBarbers, listGifts, listTips } from '@/lib/store';
+import { listBookings, getBarbers, listGifts, listTips, listWalkinPayments } from '@/lib/store';
 import { requireOwner } from '@/lib/auth';
-import { summarizeEarnings, countHaircuts, addPeriods, addCounts, summarizeGiftEarnings, countGiftHaircuts, summarizeTipEarnings } from '@/lib/earnings';
+import { summarizeEarnings, countHaircuts, addPeriods, addCounts, summarizeGiftEarnings, countGiftHaircuts, summarizeTipEarnings, summarizeWalkinEarnings } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 // Customer tips count toward the tipped barber's earnings.
 export async function GET(req: Request) {
   if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const [bookings, barbers, gifts, tips] = await Promise.all([listBookings(), getBarbers(), listGifts(), listTips()]);
+  const [bookings, barbers, gifts, tips, walkins] = await Promise.all([listBookings(), getBarbers(), listGifts(), listTips(), listWalkinPayments()]);
   const redeemedGifts = gifts.filter((g) => g.status === 'redeemed');
   const perBarber = barbers
     .filter((b) => b.active)
@@ -21,14 +21,15 @@ export async function GET(req: Request) {
       const mine = bookings.filter((x) => x.barberId === b.id);
       const mineGifts = redeemedGifts.filter((g) => g.redeemedByBarberId === b.id);
       const mineTips = tips.filter((t) => t.barberId === b.id);
+      const mineWalkins = walkins.filter((w) => w.barberId === b.id);
       return {
         id: b.id,
         name: b.name,
-        earnings: addPeriods(addPeriods(summarizeEarnings(mine), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)),
+        earnings: addPeriods(addPeriods(addPeriods(summarizeEarnings(mine), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)), summarizeWalkinEarnings(mineWalkins)),
         haircuts: addCounts(countHaircuts(mine), countGiftHaircuts(mineGifts)),
       };
     })
     .sort((a, b) => b.earnings.month - a.earnings.month);
-  const totals = addPeriods(addPeriods(summarizeEarnings(bookings), summarizeGiftEarnings(redeemedGifts)), summarizeTipEarnings(tips));
+  const totals = addPeriods(addPeriods(addPeriods(summarizeEarnings(bookings), summarizeGiftEarnings(redeemedGifts)), summarizeTipEarnings(tips)), summarizeWalkinEarnings(walkins));
   return NextResponse.json({ ok: true, totals, perBarber });
 }

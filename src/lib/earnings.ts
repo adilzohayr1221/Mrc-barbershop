@@ -1,4 +1,4 @@
-import type { Booking, Gift, Tip } from './types';
+import type { Booking, Gift, Tip, WalkinPayment } from './types';
 
 // Money attributed to one booking for earnings reports.
 // - Deposit/remainder payments: what was actually collected (amountPaid).
@@ -161,6 +161,26 @@ export function countGiftHaircuts(gifts: Gift[], today = shopToday()): HaircutCo
     if (d === today) t++;
   }
   return { today: t, week: w, month: m, all: a };
+}
+
+/** Walk-in QR payments contribute to the barber's earnings on the payment date. */
+export function summarizeWalkinEarnings(payments: WalkinPayment[], today = shopToday()): PeriodTotals {
+  const weekStart = mondayOf(today);
+  const monthStart = today.slice(0, 7) + '-01';
+  let day = 0;
+  let week = 0;
+  let month = 0;
+  for (const p of payments) {
+    const v = p.amount;
+    if (v <= 0) continue;
+    const d = shopDateOf(p.createdAt);
+    if (d < monthStart) continue;
+    month += v;
+    if (d >= weekStart) week += v;
+    if (d === today) day += v;
+  }
+  const r = (n: number) => Math.round(n * 100) / 100;
+  return { today: r(day), week: r(week), month: r(month) };
 }
 
 /** Tips (بقشيش) contribute to the barber's earnings on the tip date. */

@@ -3,7 +3,7 @@
 // BEFORE reading anything that contains customer PII.
 import { getDoc, putDoc, listDocs, delDoc, putBinary, getBinary } from './blob';
 import { ensureSeeded } from './seed';
-import type { Branch, Barber, Service, Booking, BookingStatus, Review, PinsDoc, PublicBarber, Customer, Membership, MembershipRedemption, PushSubscriptionDoc, ChatDoc, ChatMessage, ChatMeta, Gift, TeamChatDoc, WorkPhoto, Complaint, Comp, Tip, SkillVerification, ShopProduct, ShopOrder, PartnerLead, Salon, SalonOwner, TenantScoped, SalonTask, BarberMilestone, CustomerLoyalty, LoyaltyReward } from './types';
+import type { Branch, Barber, Service, Booking, BookingStatus, Review, PinsDoc, PublicBarber, Customer, Membership, MembershipRedemption, PushSubscriptionDoc, ChatDoc, ChatMessage, ChatMeta, Gift, TeamChatDoc, WorkPhoto, Complaint, Comp, Tip, WalkinPayment, SkillVerification, ShopProduct, ShopOrder, PartnerLead, Salon, SalonOwner, TenantScoped, SalonTask, BarberMilestone, CustomerLoyalty, LoyaltyReward } from './types';
 import { PLATFORM_SALON_ID } from './types';
 import { randomUUID } from 'node:crypto';
 
@@ -548,6 +548,25 @@ export async function listTips(): Promise<Tip[]> {
 
 export async function saveTip(t: Tip): Promise<void> {
   await putDoc(tipPath(t.id), t);
+}
+
+/** Walk-in QR payments to barbers. `data/walkins/<id>.json`. */
+const WALKIN_PREFIX = 'data/walkins/';
+const walkinPath = (id: string) => `${WALKIN_PREFIX}${id}.json`;
+
+export async function listWalkinPayments(): Promise<WalkinPayment[]> {
+  const paths = await listDocs(WALKIN_PREFIX);
+  const out: WalkinPayment[] = [];
+  for (const p of paths) {
+    const r = await getDoc<WalkinPayment>(p);
+    if (r) out.push(r);
+  }
+  out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return out;
+}
+
+export async function saveWalkinPayment(w: WalkinPayment): Promise<void> {
+  await putDoc(walkinPath(w.id), w);
 }
 
 /** Update a single barber inside the barbers array doc. */

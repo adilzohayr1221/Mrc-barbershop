@@ -279,6 +279,20 @@ export interface Tip extends TenantScoped {
   createdAt: string;
 }
 
+/** Walk-in payment: a customer with no appointment scans the barber's
+ *  personal QR code and pays him directly (card / Apple Pay / bank).
+ *  The full amount goes to the barber. `data/walkins/<id>.json`. */
+export interface WalkinPayment extends TenantScoped {
+  id: string;
+  barberId: string;
+  amount: number; // dollars
+  payerName?: string | null; // optional name the walk-in typed
+  paymentIntentId: string;
+  payoutTransferId?: string | null;
+  payoutFailed?: boolean;
+  createdAt: string; // ISO
+}
+
 // Web-push subscriptions (one per device). role+userId = who to notify.
 export interface PushSubscriptionDoc extends TenantScoped {
   id: string;
