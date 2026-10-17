@@ -121,7 +121,7 @@ export default function VipBarbers() {
                   href={`/customer/book/${b.id}?branchId=${b.branchIds[0] ?? ''}&vip=1`}
                   className="gold-btn rounded-2xl px-4 py-3 text-center flex items-center justify-center gap-2 mt-4 text-[15px]"
                 >
-                  {t('vip.bookVip')} · $100 <ArrowRightIcon size={18} />
+                  {t('vip.bookVip')} · $100 {t('vip.perPerson')} <ArrowRightIcon size={18} />
                 </Link>
               </div>
             ))}

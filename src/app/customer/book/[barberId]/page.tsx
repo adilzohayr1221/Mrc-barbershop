@@ -29,6 +29,7 @@ interface Confirmation {
   branchAddress: string;
   houseCall?: boolean;
   homeAddress?: string;
+  vipPeople?: number;
 }
 
 function fmtDate(iso: string) {
@@ -68,6 +69,7 @@ export default function BookPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState(''); // VIP home visits only
+  const [vipPeople, setVipPeople] = useState(1); // people covered by the visit ($100 each)
   const [planAvailable, setPlanAvailable] = useState(false);
   const [planOptions, setPlanOptions] = useState<{ id: string; planName: string; planPrice: number }[]>([]);
   const [planChoice, setPlanChoice] = useState<string>('');
@@ -238,7 +240,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, houseCall: isVip || undefined }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, houseCall: isVip || undefined, vipPeople: isVip ? vipPeople : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.couldNotStartPayment'));
@@ -288,7 +290,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId, houseCall: isVip || undefined, homeAddress: isVip ? address.trim() : undefined }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId, houseCall: isVip || undefined, homeAddress: isVip ? address.trim() : undefined, vipPeople: isVip ? vipPeople : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
@@ -330,7 +332,7 @@ export default function BookPage() {
             )}
             <p><span className="text-neutral-500 text-sm block">{t('book.when')}</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
             {done.houseCall ? (
-              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>🏠 {t('book.whereHome')}</b><span className="block text-sm text-neutral-600">{done.homeAddress}</span></p>
+              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>🏠 {t('book.whereHome')}</b><span className="block text-sm text-neutral-600">{done.homeAddress}</span>{(done.vipPeople ?? 1) > 1 && <span className="block text-sm text-neutral-600">👥 {done.vipPeople} {t('book.peopleWord')}</span>}</p>
             ) : (
               <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>{done.branchAddress}</b></p>
             )}
@@ -425,7 +427,7 @@ export default function BookPage() {
               barberName: barber?.name || t('book.barber'),
               dateLabel: fmtDate(date),
               time,
-              totalPrice: isVip ? 100 : disc(services.find((s) => s.id === serviceId)?.price ?? payAmount),
+              totalPrice: isVip ? 100 * vipPeople : disc(services.find((s) => s.id === serviceId)?.price ?? payAmount),
             }}
             onSuccess={(paymentIntentId) => placeBooking(paymentIntentId)}
             onBack={() => { setStep('details'); setClientSecret(''); }}
@@ -438,6 +440,33 @@ export default function BookPage() {
           <div className="rounded-2xl p-4 border border-gold/50 shadow-[0_10px_30px_rgba(0,0,0,0.25)]" style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}>
             <p className="font-extrabold text-[15px] text-white">🏠 VIP</p>
             <p className="text-[13px] text-neutral-300 mt-1 leading-relaxed">{t('book.vipBanner')}</p>
+            <div className="flex items-center justify-between gap-3 mt-3.5 pt-3.5 border-t border-white/10">
+              <span className="text-[13.5px] font-bold text-white">{t('book.vipPeople')}</span>
+              <span className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  aria-label="Fewer people"
+                  onClick={() => setVipPeople((n) => Math.max(1, n - 1))}
+                  disabled={vipPeople <= 1}
+                  className="w-9 h-9 rounded-full border border-gold/60 text-gold text-lg font-extrabold flex items-center justify-center disabled:opacity-30 active:scale-95 transition-transform"
+                >
+                  −
+                </button>
+                <span className="text-white font-extrabold text-[17px] min-w-[22px] text-center">{vipPeople}</span>
+                <button
+                  type="button"
+                  aria-label="More people"
+                  onClick={() => setVipPeople((n) => Math.min(6, n + 1))}
+                  disabled={vipPeople >= 6}
+                  className="w-9 h-9 rounded-full border border-gold/60 text-gold text-lg font-extrabold flex items-center justify-center disabled:opacity-30 active:scale-95 transition-transform"
+                >
+                  +
+                </button>
+              </span>
+            </div>
+            <p className="text-[13px] text-neutral-300 mt-2.5">
+              {t('book.vipPerPerson')} · <b className="text-gold text-[15px]">${100 * vipPeople}</b>
+            </p>
           </div>
         )}
         <div className="card p-5 overflow-hidden">
@@ -445,11 +474,13 @@ export default function BookPage() {
           <select className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name} — ${disc(s.price)}{hasDiscount && s.price !== disc(s.price) ? ` (was $${s.price})` : ''} ({s.durationMin} min)
+                {isVip
+                  ? `${s.name} (${s.durationMin} min)`
+                  : `${s.name} — $${disc(s.price)}${hasDiscount && s.price !== disc(s.price) ? ` (was $${s.price})` : ''} (${s.durationMin} min)`}
               </option>
             ))}
           </select>
-          {hasDiscount && (
+          {hasDiscount && !isVip && (
             <p className="text-[12px] font-bold text-green-800 mt-2">🎓 {t('book.discountApplied')}</p>
           )}
           {services.length === 0 && <p className="text-sm text-neutral-600 mt-2 leading-relaxed">{t('book.noServices')}</p>}

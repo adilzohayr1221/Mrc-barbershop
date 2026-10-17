@@ -161,6 +161,7 @@ export interface Booking extends TenantScoped {
     // balance is always computed from this, never from the live service price.
   houseCall?: boolean; // VIP home visit: the barber goes to the customer's home
   homeAddress?: string | null; // customer's home address for a house-call visit
+  vipPeople?: number; // people covered by a VIP visit ($100 each, default 1)
 }
 
 // Monthly haircut plan ("Offers"): $120/month for 4 haircuts — one per week.

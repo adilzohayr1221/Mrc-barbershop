@@ -1,5 +1,5 @@
 import type { Booking, Gift, Tip, WalkinPayment } from './types';
-import { VIP_BARBER_PAYOUT_USD } from './vip';
+import { VIP_BARBER_PAYOUT_USD, vipPeopleOf } from './vip';
 
 // Money attributed to one booking for earnings reports.
 // - Deposit/remainder payments: what was actually collected (amountPaid).
@@ -13,9 +13,10 @@ export function earningOf(b: Booking, forBarber = false): number {
   if (b.paymentStatus === 'paid' || b.paymentStatus === 'paid_in_full') {
     const v = b.amountPaid ?? 0;
     if (v <= 0) return 0;
-    // VIP home visit: the customer pays $100, but the barber's share is $60 —
-    // barber-facing earnings only ever show his $60 (owner's rule).
-    if (forBarber && b.houseCall) return Math.min(VIP_BARBER_PAYOUT_USD, Math.round(v * 100) / 100);
+    // VIP home visit: the customer pays $100 per person, but the barber's
+    // share is $60 per person — barber-facing earnings only ever show his
+    // share (owner's rule).
+    if (forBarber && b.houseCall) return Math.min(VIP_BARBER_PAYOUT_USD * vipPeopleOf(b), Math.round(v * 100) / 100);
     return Math.round(v * 100) / 100;
   }
   if (b.paymentStatus === 'membership_redeemed') return PLAN_HAIRCUT_VALUE_USD;

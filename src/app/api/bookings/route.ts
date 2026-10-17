@@ -4,7 +4,7 @@ import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
-import { VIP_PRICE_USD } from '@/lib/vip';
+import { parseVipPeople, vipTotalUSD, vipClash } from '@/lib/vip';
 import { buildWeeks, getMembershipById, listActiveMemberships } from '@/lib/membership';
 import { shopToday, shopNowTime } from '@/lib/earnings';
 import { sendPushToUser } from '@/lib/push';
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
   const { barberId, serviceId, branchId, date, time, customerName, customerPhone, paymentIntentId } = body ?? {};
   const useMembership = body?.useMembership === true;
   const houseCall = body?.houseCall === true;
+  const vipPeople = houseCall ? parseVipPeople(body?.vipPeople) : 1;
   const homeAddress = typeof body?.homeAddress === 'string' ? body.homeAddress.trim() : '';
   if (houseCall && useMembership) {
     return NextResponse.json({ error: 'VIP home visits are paid in full — plans do not cover them.' }, { status: 400 });
@@ -82,12 +83,17 @@ export async function POST(req: Request) {
   if (bookings.some((b) => b.barberId === barberId && b.date === date && b.time === time && b.status === 'booked')) {
     return NextResponse.json({ error: 'This time was just booked. Please pick another.' }, { status: 409 });
   }
+  // A VIP home visit blocks 2 hours of the barber's day (and needs its own
+  // 2-hour window free of other bookings).
+  if (vipClash(bookings, barberId, date, time, houseCall)) {
+    return NextResponse.json({ error: 'This time was just booked. Please pick another.' }, { status: 409 });
+  }
 
   // Approved student/military customers book at the discounted price.
   // The agreed total is stored on the booking so the remaining balance is
   // always computed from it, never from the live service price.
-  // VIP home visits override this with the flat $100 package price.
-  const finalPrice = houseCall ? VIP_PRICE_USD : discountPrice(service.price, customer);
+  // VIP home visits override this with the flat $100-per-person price.
+  const finalPrice = houseCall ? vipTotalUSD(vipPeople) : discountPrice(service.price, customer);
 
   // Monthly-plan booking: no deposit. The member's weekly haircut credit is
   // consumed later, when the barber scans the membership code at the shop.
@@ -172,7 +178,7 @@ export async function POST(req: Request) {
   if (typeof paymentIntentId !== 'string' || !paymentIntentId.startsWith('pi_')) {
     return NextResponse.json({ error: 'Payment is required to book.' }, { status: 402 });
   }
-  const expectedCents = houseCall ? toCents(VIP_PRICE_USD) : toCents(depositFor(finalPrice));
+  const expectedCents = houseCall ? toCents(vipTotalUSD(vipPeople)) : toCents(depositFor(finalPrice));
   let amountPaid: number;
   let stripeCustomerId: string | null = null;
   let stripePaymentMethodId: string | null = null;
@@ -221,19 +227,19 @@ export async function POST(req: Request) {
     stripeCustomerId,
     stripePaymentMethodId,
     servicePrice: finalPrice,
-    ...(houseCall ? { houseCall: true, homeAddress } : {}),
+    ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}),
   };
   await saveBooking(booking);
   // The barber gets a push the moment he has a new haircut.
   void sendPushToUser('barber', barberId, {
     title: houseCall ? 'New VIP home visit 🏠' : 'New booking ✂️',
     body: houseCall
-      ? `${service.name} at home with ${customerName.trim()} — ${date} at ${time}. Address: ${homeAddress}`
+      ? `${service.name} at home with ${customerName.trim()} — ${date} at ${time}.${vipPeople > 1 ? ` ${vipPeople} people.` : ''} Address: ${homeAddress}`
       : `${service.name} with ${customerName.trim()} — ${date} at ${time}.`,
     url: '/barber/dashboard',
   });
   return NextResponse.json(
-    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress } : {}) } },
+    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}) } },
     { status: 201 }
   );
 }

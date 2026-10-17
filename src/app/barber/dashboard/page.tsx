@@ -82,7 +82,7 @@ function VipVisitInfo({ b }: { b: ScheduleBooking }) {
   if (!b.houseCall) return null;
   return (
     <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-[#7a5b12] bg-gold/15 border border-gold/50 rounded-full px-2.5 py-1">🏠 VIP HOME VISIT</span>
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-[#7a5b12] bg-gold/15 border border-gold/50 rounded-full px-2.5 py-1">🏠 VIP HOME VISIT{(b.vipPeople ?? 1) > 1 ? ` · ${b.vipPeople} people` : ''}</span>
       {b.homeAddress && (
         <>
           <span className="text-[13px] text-neutral-700">{b.homeAddress}</span>
