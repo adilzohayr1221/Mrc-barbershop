@@ -106,9 +106,24 @@ export default function CustomerHome() {
   return (
     <main className="flex-1 w-full">
       <div className="px-4 pt-5 pb-6 max-w-2xl mx-auto w-full">
-        <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/90">MRC Barbershops</p>
-        <h1 className="page-title mt-1"><span className="gold-text">{t('home.chooseBranch')}</span></h1>
-        <p className="page-sub mt-1.5 mb-4">{t('home.tapPin')}</p>
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/90">MRC Barbershops</p>
+            <h1 className="page-title mt-1"><span className="gold-text">{t('home.chooseBranch')}</span></h1>
+            <p className="page-sub mt-1.5">{t('home.tapPin')}</p>
+          </div>
+          <Link
+            href="/customer/vip"
+            aria-label="VIP home visits"
+            className="shrink-0 w-[104px] h-[104px] rounded-2xl border border-gold/50 shadow-[0_10px_30px_rgba(0,0,0,0.35)] flex flex-col items-center justify-center text-center px-1.5 active:scale-95 transition-transform"
+            style={{ background: 'linear-gradient(140deg, #1c1a16 0%, #0e0d0b 100%)' }}
+          >
+            <span className="text-[15px] leading-none">🏠</span>
+            <span className="gold-text font-black text-[26px] leading-none tracking-wide mt-1">VIP</span>
+            <span className="text-[9.5px] font-semibold text-neutral-300 leading-tight mt-1.5">{t('home.vipTag')}</span>
+            <span className="text-gold font-extrabold text-[13px] leading-none mt-1">$100</span>
+          </Link>
+        </div>
 
         <Link
           href="/customer/offers"

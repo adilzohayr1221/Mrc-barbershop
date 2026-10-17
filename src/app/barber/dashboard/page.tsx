@@ -76,6 +76,30 @@ function CustomerAvatar({ b, size = 32 }: { b: { customerName: string; customerP
   );
 }
 
+// VIP home-visit marker: gold badge + the customer's home address + a
+// directions link, shown on schedule cards for house-call bookings.
+function VipVisitInfo({ b }: { b: ScheduleBooking }) {
+  if (!b.houseCall) return null;
+  return (
+    <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-[#7a5b12] bg-gold/15 border border-gold/50 rounded-full px-2.5 py-1">🏠 VIP HOME VISIT</span>
+      {b.homeAddress && (
+        <>
+          <span className="text-[13px] text-neutral-700">{b.homeAddress}</span>
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.homeAddress)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13px] font-bold text-gold underline underline-offset-2"
+          >
+            Directions ↗
+          </a>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Remaining balance on an appointment (null when the price is unknown).
 function remainingOf(b: ScheduleBooking): number | null {
   if (b.servicePrice == null) return null;
@@ -1087,6 +1111,8 @@ export default function BarberDashboard() {
   const [hoursInit, setHoursInit] = useState(false);
   const [hoursBusy, setHoursBusy] = useState(false);
   const [hoursMsg, setHoursMsg] = useState('');
+  const [houseCallsOn, setHouseCallsOn] = useState(false);
+  const [hcBusy, setHcBusy] = useState(false);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [chatBooking, setChatBooking] = useState<ScheduleBooking | null>(null);
   const [teamUnread, setTeamUnread] = useState(0);
@@ -1155,6 +1181,30 @@ export default function BarberDashboard() {
     const t = setInterval(loadTeamUnread, 30000);
     return () => clearInterval(t);
   }, [load, loadEarnings, loadUnread, loadTeamUnread]);
+
+  useEffect(() => {
+    fetch('/api/barber/house-calls', { headers: { Authorization: `Bearer ${barberToken()}` } })
+      .then((r) => r.json())
+      .then((d) => setHouseCallsOn(d.houseCalls === true))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggleHouseCalls() {
+    const nextVal = !houseCallsOn;
+    setHcBusy(true);
+    try {
+      const r = await fetch('/api/barber/house-calls', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${barberToken()}` },
+        body: JSON.stringify({ enabled: nextVal }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not update.');
+      setHouseCallsOn(j.houseCalls === true);
+    } catch {}
+    setHcBusy(false);
+  }
 
   useEffect(() => {
     if (data && !hoursInit) {
@@ -1413,6 +1463,30 @@ export default function BarberDashboard() {
         </button>
       </div>
 
+      <div className="card p-5 mt-5">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="font-extrabold text-[16px] tracking-tight text-[#141414]">🏠 VIP house calls</p>
+            <p className="text-[13px] text-neutral-600 mt-1 leading-relaxed">
+              Go to the customer&apos;s home to cut their hair. Flat $100 per visit, paid in full when they book — you receive $60 per visit.
+            </p>
+          </div>
+          <button
+            onClick={toggleHouseCalls}
+            disabled={hcBusy}
+            role="switch"
+            aria-checked={houseCallsOn}
+            aria-label="VIP house calls"
+            className={`shrink-0 w-[56px] h-[32px] rounded-full p-1 transition-colors ${houseCallsOn ? 'bg-gold' : 'bg-neutral-300'}`}
+          >
+            <span className={`block w-[24px] h-[24px] rounded-full bg-white shadow transition-transform ${houseCallsOn ? 'translate-x-[24px]' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        <p className={`text-[13px] font-bold mt-2.5 ${houseCallsOn ? 'text-green-700' : 'text-neutral-500'}`}>
+          {houseCallsOn ? 'ON — customers can book you for a home visit.' : 'OFF — you only appear for in-shop bookings.'}
+        </p>
+      </div>
+
       {next && (
         <div className="card card-selected p-5 mt-5 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-gold to-transparent" />
@@ -1431,6 +1505,7 @@ export default function BarberDashboard() {
             <span className="text-neutral-600">·</span> {next.serviceName}
           </div>
           <PayState b={next} />
+          <VipVisitInfo b={next} />
           <div className="mt-3 flex items-center gap-3 flex-wrap">
             <ChatBtn label={t('barber.dashboard.chat_with').replace('{name}', next.customerName)} unreadCount={unread[next.id] ?? 0} onOpen={() => setChatBooking(next)} />
             <CancelBookingButton bookingId={next.id} getToken={barberToken} onCancelled={() => markCancelledLocal(next.id)} />
@@ -1477,6 +1552,7 @@ export default function BarberDashboard() {
                 )}
               </span>
             </div>
+            <VipVisitInfo b={b} />
             <div className="mt-1 ml-[4.5rem] flex items-center gap-5 flex-wrap">
               {b.status === 'booked' && !b.completedAt && (
                 <DoneButton bookingId={b.id} token={barberToken()} onDone={(amt) => markDoneLocal(b.id, amt)} />
@@ -1512,6 +1588,7 @@ export default function BarberDashboard() {
             </div>
             <span className="block text-sm text-neutral-600 mt-0.5">{b.customerName} — {b.serviceName}</span>
             <PayState b={b} />
+            <VipVisitInfo b={b} />
             <div className="mt-1 flex items-center gap-5 flex-wrap">
               <NoShowButton bookingId={b.id} getToken={barberToken} onMarked={() => markNoShowLocal(b.id)} />
               <CancelBookingButton bookingId={b.id} getToken={barberToken} onCancelled={() => markCancelledLocal(b.id)} />

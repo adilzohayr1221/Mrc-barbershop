@@ -92,6 +92,7 @@ export interface Barber extends TenantScoped {
   // see or store bank details, only this account ID.
   stripeAccountId?: string | null;
   payoutsEnabled?: boolean; // Connect onboarding complete, can receive transfers
+  houseCalls?: boolean; // barber opted in to VIP home visits ($100 flat, he gets $60)
   verifiedSkills?: string[]; // skills the owner verified from photo evidence
 }
 
@@ -158,6 +159,8 @@ export interface Booking extends TenantScoped {
   servicePrice?: number | null; // total service price agreed at booking time
     // (discounted when the customer had an approved discount) — the remaining
     // balance is always computed from this, never from the live service price.
+  houseCall?: boolean; // VIP home visit: the barber goes to the customer's home
+  homeAddress?: string | null; // customer's home address for a house-call visit
 }
 
 // Monthly haircut plan ("Offers"): $120/month for 4 haircuts — one per week.
@@ -388,6 +391,7 @@ export interface PublicBarber {
   workingHours?: WorkingHours;
   workPhotos?: string[]; // approved portfolio photo URLs
   verifiedSkills?: string[]; // owner-verified skills (show a ✓ badge)
+  houseCalls?: boolean; // offers VIP home visits
 }
 
 // Barber team group chat: one shared thread for all active barbers in the shop.

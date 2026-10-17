@@ -4,6 +4,7 @@ import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
+import { VIP_PRICE_USD } from '@/lib/vip';
 import type { WorkingHours } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const { barberId, serviceId, branchId, date, time } = body ?? {};
+  const houseCall = body?.houseCall === true;
   if (typeof barberId !== 'string' || !barberId) return NextResponse.json({ error: 'barberId required' }, { status: 400 });
   if (typeof serviceId !== 'string' || !serviceId) return NextResponse.json({ error: 'serviceId required' }, { status: 400 });
   if (typeof branchId !== 'string' || !branchId) return NextResponse.json({ error: 'branchId required' }, { status: 400 });
@@ -53,9 +55,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'This time was just booked. Please pick another.' }, { status: 409 });
   }
 
+  // VIP home visit: flat $100 package, paid in full at booking time, only
+  // from barbers who opted in to house calls. No deposit split, no discount.
+  if (houseCall && barber.houseCalls !== true) {
+    return NextResponse.json({ error: 'This barber does not offer home visits.' }, { status: 400 });
+  }
   // Approved student/military customers pay the discounted price (server-side).
-  const finalPrice = discountPrice(service.price, customer);
-  const deposit = depositFor(finalPrice);
+  const finalPrice = houseCall ? VIP_PRICE_USD : discountPrice(service.price, customer);
+  const deposit = houseCall ? VIP_PRICE_USD : depositFor(finalPrice);
   const amountCents = toCents(deposit);
   if (amountCents < 50) {
     return NextResponse.json({ error: 'This service cannot be booked with a deposit.' }, { status: 400 });
@@ -103,9 +110,11 @@ export async function POST(req: Request) {
         time,
         customerId: session.customerId,
         serviceName: service.name,
-        kind: 'booking_deposit',
+        kind: houseCall ? 'booking_vip' : 'booking_deposit',
       },
-      description: `MRC Barbershops — $${deposit.toFixed(2)} booking deposit for ${service.name} with ${barber.name} on ${date} at ${time}`,
+      description: houseCall
+        ? `MRC Barbershops — $${deposit.toFixed(2)} VIP home visit (${service.name}) with ${barber.name} on ${date} at ${time}`
+        : `MRC Barbershops — $${deposit.toFixed(2)} booking deposit for ${service.name} with ${barber.name} on ${date} at ${time}`,
     });
     return NextResponse.json({
       ok: true,

@@ -27,6 +27,8 @@ interface Confirmation {
   depositPaid?: number;
   membership?: boolean;
   branchAddress: string;
+  houseCall?: boolean;
+  homeAddress?: string;
 }
 
 function fmtDate(iso: string) {
@@ -54,6 +56,7 @@ export default function BookPage() {
   const { barberId } = useParams<{ barberId: string }>();
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branchId') || '';
+  const isVip = searchParams.get('vip') === '1';
   const { checked, name: accountName } = useCustomerAuth();
   const { t } = useLang();
 
@@ -64,6 +67,7 @@ export default function BookPage() {
   const [time, setTime] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState(''); // VIP home visits only
   const [planAvailable, setPlanAvailable] = useState(false);
   const [planOptions, setPlanOptions] = useState<{ id: string; planName: string; planPrice: number }[]>([]);
   const [planChoice, setPlanChoice] = useState<string>('');
@@ -222,6 +226,10 @@ export default function BookPage() {
       setError(t('book.fillAll'));
       return;
     }
+    if (isVip && address.trim().length < 8) {
+      setError(t('book.addressRequired'));
+      return;
+    }
     setBusy(true);
     try {
       const r = await fetch('/api/payments/intent', {
@@ -230,7 +238,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, houseCall: isVip || undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.couldNotStartPayment'));
@@ -280,7 +288,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId, houseCall: isVip || undefined, homeAddress: isVip ? address.trim() : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
@@ -321,7 +329,11 @@ export default function BookPage() {
               </p>
             )}
             <p><span className="text-neutral-500 text-sm block">{t('book.when')}</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
-            <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>{done.branchAddress}</b></p>
+            {done.houseCall ? (
+              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>🏠 {t('book.whereHome')}</b><span className="block text-sm text-neutral-600">{done.homeAddress}</span></p>
+            ) : (
+              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>{done.branchAddress}</b></p>
+            )}
           </div>
           <div className="flex flex-col gap-3 justify-center mt-7">
             <a
@@ -360,7 +372,7 @@ export default function BookPage() {
 
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
-      <Link href={`/customer/branch/${branchId}`} className="back-link"><ArrowLeftIcon size={16} /> {t('book.backToBarbers')}</Link>
+      <Link href={isVip ? '/customer/vip' : `/customer/branch/${branchId}`} className="back-link"><ArrowLeftIcon size={16} /> {t('book.backToBarbers')}</Link>
 
       {/* Barber identity header — tap the photo for the full profile */}
       <div className="card p-4 mt-3 flex items-center gap-4 fade-in">
@@ -413,7 +425,7 @@ export default function BookPage() {
               barberName: barber?.name || t('book.barber'),
               dateLabel: fmtDate(date),
               time,
-              totalPrice: disc(services.find((s) => s.id === serviceId)?.price ?? payAmount),
+              totalPrice: isVip ? 100 : disc(services.find((s) => s.id === serviceId)?.price ?? payAmount),
             }}
             onSuccess={(paymentIntentId) => placeBooking(paymentIntentId)}
             onBack={() => { setStep('details'); setClientSecret(''); }}
@@ -422,6 +434,12 @@ export default function BookPage() {
         </div>
       ) : (
       <div className="grid gap-5 fade-in">
+        {isVip && (
+          <div className="rounded-2xl p-4 border border-gold/50 shadow-[0_10px_30px_rgba(0,0,0,0.25)]" style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}>
+            <p className="font-extrabold text-[15px] text-white">🏠 VIP</p>
+            <p className="text-[13px] text-neutral-300 mt-1 leading-relaxed">{t('book.vipBanner')}</p>
+          </div>
+        )}
         <div className="card p-5 overflow-hidden">
           <label className="label"><span className="inline-flex items-center gap-1.5"><ScissorsIcon size={14} className="text-gold" /> {t('book.serviceLabel')}</span></label>
           <select className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
@@ -509,11 +527,17 @@ export default function BookPage() {
             <label className="label"><span className="inline-flex items-center gap-1.5"><PhoneIcon size={14} className="text-gold" /> {t('book.phone')}</span></label>
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('book.phonePlaceholder')} inputMode="tel" autoComplete="tel" />
           </div>
+          {isVip && (
+            <div className="min-w-0">
+              <label className="label"><span className="inline-flex items-center gap-1.5">🏠 {t('book.addressLabel')}</span></label>
+              <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('book.addressPlaceholder')} autoComplete="street-address" />
+            </div>
+          )}
         </div>
 
         {error && <p className="text-red-700 text-sm bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-3">{error}</p>}
 
-        {planAvailable ? (
+        {planAvailable && !isVip ? (
           <>
             {planOptions.length > 1 && (
               <div className="grid gap-2">

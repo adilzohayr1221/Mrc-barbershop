@@ -350,7 +350,7 @@ function BookingsTab({ bookings, setBookings }: { bookings: FullBooking[]; setBo
             {b.serviceName} with {b.barberName} · {b.customerPhone}
           </div>
           {b.customerEmail && <div className="text-xs text-neutral-400">{b.customerEmail}</div>}
-          <div className="text-xs text-neutral-400 mt-0.5">{b.branchAddress}</div>
+          <div className="text-xs text-neutral-400 mt-0.5">{b.houseCall ? `🏠 VIP home visit — ${b.homeAddress ?? ''}` : b.branchAddress}</div>
           {b.status === 'no_show' && (
             <div className="text-xs text-amber-700 font-medium mt-1">Deposit kept — not refunded.</div>
           )}
@@ -368,7 +368,7 @@ function BookingsTab({ bookings, setBookings }: { bookings: FullBooking[]; setBo
           <div className="text-sm text-neutral-600 mt-1.5">
             {b.serviceName} with {b.barberName} · {b.customerPhone}
           </div>
-          <div className="text-xs text-neutral-600 mt-0.5">{b.branchAddress}</div>
+          <div className="text-xs text-neutral-600 mt-0.5">{b.houseCall ? `🏠 VIP home visit — ${b.homeAddress ?? ''}` : b.branchAddress}</div>
           {b.completedAt && (
             <div className="mt-2.5 flex items-center gap-3 rounded-2xl bg-[#f7f2e2] border border-[#e6dabf] p-2.5">
               {b.completionPhotoPath ? (

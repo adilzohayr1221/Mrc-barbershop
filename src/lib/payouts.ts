@@ -6,6 +6,7 @@ import {
   listMemberships, listRedemptions, saveRedemption,
 } from '@/lib/store';
 import { membershipPayoutPerWeek } from '@/lib/membership';
+import { payoutForBooking } from '@/lib/vip';
 
 // Barber payouts via Stripe Connect.
 // Money flow: all customer charges land in the owner's (platform) Stripe
@@ -225,7 +226,7 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
     if (!b.completedAt || b.payoutTransferId || (b.payoutAmount ?? 0) > 0) continue;
     if (b.status === 'cancelled') continue;
     if (b.paymentStatus !== 'paid' && b.paymentStatus !== 'paid_in_full') continue;
-    const amount = Math.round((b.amountPaid ?? 0) * 100) / 100;
+    const amount = payoutForBooking(b);
     await attempt({
       barberId: b.barberId,
       amount,

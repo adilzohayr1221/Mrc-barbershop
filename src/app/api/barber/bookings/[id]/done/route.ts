@@ -3,6 +3,7 @@ import { getBooking, saveBooking, saveCompletionPhoto, inSalon } from '@/lib/sto
 import { requireBarber } from '@/lib/auth';
 import { barberSalonId } from '@/lib/salonScope';
 import { payoutToBarber } from '@/lib/payouts';
+import { payoutForBooking } from '@/lib/vip';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     );
   }
 
-  const amount = Math.round((booking.amountPaid ?? 0) * 100) / 100;
+  // Regular bookings pay out everything collected; a VIP home visit pays
+  // the barber's fixed $60 share of the $100 (platform keeps $40).
+  const amount = payoutForBooking(booking);
   booking.completedAt = new Date().toISOString();
   booking.completionPhotoPath = photoPath;
 

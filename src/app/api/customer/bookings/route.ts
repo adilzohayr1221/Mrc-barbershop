@@ -65,7 +65,10 @@ export async function GET(req: Request) {
         customerName: b.customerName,
         barberName: barberMap.get(b.barberId) ?? '',
         serviceName: serviceMap.get(b.serviceId)?.name ?? '',
-        price,
+        // VIP home visits show the flat $100 package price agreed at booking.
+        price: b.houseCall ? (b.servicePrice ?? price) : price,
+        houseCall: b.houseCall === true,
+        homeAddress: b.houseCall ? (b.homeAddress ?? null) : null,
         branchName: branchMap.get(b.branchId)?.name ?? '',
         branchAddress: branchMap.get(b.branchId)?.address ?? '',
         salonName: salonNameMap.get(salonOf(b)) ?? 'MRC Barbershops',

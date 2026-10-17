@@ -4,6 +4,7 @@ import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
+import { VIP_PRICE_USD } from '@/lib/vip';
 import { buildWeeks, getMembershipById, listActiveMemberships } from '@/lib/membership';
 import { shopToday, shopNowTime } from '@/lib/earnings';
 import { sendPushToUser } from '@/lib/push';
@@ -32,6 +33,14 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const { barberId, serviceId, branchId, date, time, customerName, customerPhone, paymentIntentId } = body ?? {};
   const useMembership = body?.useMembership === true;
+  const houseCall = body?.houseCall === true;
+  const homeAddress = typeof body?.homeAddress === 'string' ? body.homeAddress.trim() : '';
+  if (houseCall && useMembership) {
+    return NextResponse.json({ error: 'VIP home visits are paid in full — plans do not cover them.' }, { status: 400 });
+  }
+  if (houseCall && (homeAddress.length < 8 || homeAddress.length > 200)) {
+    return NextResponse.json({ error: 'Please enter your full home address for the visit.' }, { status: 400 });
+  }
 
   if (typeof barberId !== 'string' || !barberId) return NextResponse.json({ error: 'barberId required' }, { status: 400 });
   if (typeof serviceId !== 'string' || !serviceId) return NextResponse.json({ error: 'serviceId required' }, { status: 400 });
@@ -49,6 +58,7 @@ export async function POST(req: Request) {
   const branch = branches.find((b) => b.id === branchId);
   if (!barber || !service || !branch) return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   if (!barber.branchIds.includes(branchId)) return NextResponse.json({ error: 'Barber not at this branch' }, { status: 400 });
+  if (houseCall && barber.houseCalls !== true) return NextResponse.json({ error: 'This barber does not offer home visits.' }, { status: 400 });
 
   // Never book a slot that has already started (shop-local wall clock).
   // The customer pays at booking time, and a past appointment is instantly
@@ -76,7 +86,8 @@ export async function POST(req: Request) {
   // Approved student/military customers book at the discounted price.
   // The agreed total is stored on the booking so the remaining balance is
   // always computed from it, never from the live service price.
-  const finalPrice = discountPrice(service.price, customer);
+  // VIP home visits override this with the flat $100 package price.
+  const finalPrice = houseCall ? VIP_PRICE_USD : discountPrice(service.price, customer);
 
   // Monthly-plan booking: no deposit. The member's weekly haircut credit is
   // consumed later, when the barber scans the membership code at the shop.
@@ -161,7 +172,7 @@ export async function POST(req: Request) {
   if (typeof paymentIntentId !== 'string' || !paymentIntentId.startsWith('pi_')) {
     return NextResponse.json({ error: 'Payment is required to book.' }, { status: 402 });
   }
-  const expectedCents = toCents(depositFor(finalPrice));
+  const expectedCents = houseCall ? toCents(VIP_PRICE_USD) : toCents(depositFor(finalPrice));
   let amountPaid: number;
   let stripeCustomerId: string | null = null;
   let stripePaymentMethodId: string | null = null;
@@ -203,21 +214,26 @@ export async function POST(req: Request) {
     createdAt: new Date().toISOString(),
     status: 'booked',
     paymentIntentId,
-    paymentStatus: 'paid',
+    // A VIP home visit is paid in full at booking time; anything else here
+    // is the $5-deposit path ('paid'), the rest collected at the shop.
+    paymentStatus: houseCall ? 'paid_in_full' : 'paid',
     amountPaid,
     stripeCustomerId,
     stripePaymentMethodId,
     servicePrice: finalPrice,
+    ...(houseCall ? { houseCall: true, homeAddress } : {}),
   };
   await saveBooking(booking);
   // The barber gets a push the moment he has a new haircut.
   void sendPushToUser('barber', barberId, {
-    title: 'New booking ✂️',
-    body: `${service.name} with ${customerName.trim()} — ${date} at ${time}.`,
+    title: houseCall ? 'New VIP home visit 🏠' : 'New booking ✂️',
+    body: houseCall
+      ? `${service.name} at home with ${customerName.trim()} — ${date} at ${time}. Address: ${homeAddress}`
+      : `${service.name} with ${customerName.trim()} — ${date} at ${time}.`,
     url: '/barber/dashboard',
   });
   return NextResponse.json(
-    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address } },
+    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress } : {}) } },
     { status: 201 }
   );
 }

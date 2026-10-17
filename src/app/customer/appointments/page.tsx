@@ -24,6 +24,8 @@ interface MyBooking {
   branchName: string;
   branchAddress: string;
   paymentStatus: 'paid' | 'refunded' | 'paid_in_full' | null;
+  houseCall?: boolean;
+  homeAddress?: string | null;
   depositPaid: number | null;
   remaining: number | null;
   hasSavedCard: boolean;
@@ -79,7 +81,11 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
       </div>
       <div className={`text-xs mt-1 flex items-center gap-1 ${inactive ? 'text-neutral-400' : 'text-neutral-500'}`}>
         <MapPinIcon size={12} className="text-gold/60 shrink-0" />
-        <span className="truncate">{b.branchName} — {b.branchAddress}</span>
+        {b.houseCall ? (
+          <span className="truncate">🏠 VIP — {b.homeAddress}</span>
+        ) : (
+          <span className="truncate">{b.branchName} — {b.branchAddress}</span>
+        )}
       </div>
       {!inactive && (
         <div className="mt-2.5 flex flex-wrap gap-2">

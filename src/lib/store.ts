@@ -286,6 +286,7 @@ export async function getPublicBarbers(branchId?: string, salonId?: string): Pro
         workingHours: b.workingHours,
         workPhotos: wp,
         verifiedSkills: b.verifiedSkills ?? [],
+        houseCalls: b.houseCalls === true,
       };
     });
 }
