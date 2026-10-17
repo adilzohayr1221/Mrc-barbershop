@@ -1,4 +1,5 @@
 import type { Booking, Gift, Tip, WalkinPayment } from './types';
+import { VIP_BARBER_PAYOUT_USD } from './vip';
 
 // Money attributed to one booking for earnings reports.
 // - Deposit/remainder payments: what was actually collected (amountPaid).
@@ -6,12 +7,16 @@ import type { Booking, Gift, Tip, WalkinPayment } from './types';
 // - Cancelled/refunded: never counted. No-shows keep the deposit, so they count.
 export const PLAN_HAIRCUT_VALUE_USD = 30;
 
-export function earningOf(b: Booking): number {
+export function earningOf(b: Booking, forBarber = false): number {
   if (b.status === 'cancelled') return 0;
   if (b.paymentStatus === 'refunded') return 0;
   if (b.paymentStatus === 'paid' || b.paymentStatus === 'paid_in_full') {
     const v = b.amountPaid ?? 0;
-    return v > 0 ? Math.round(v * 100) / 100 : 0;
+    if (v <= 0) return 0;
+    // VIP home visit: the customer pays $100, but the barber's share is $60 —
+    // barber-facing earnings only ever show his $60 (owner's rule).
+    if (forBarber && b.houseCall) return Math.min(VIP_BARBER_PAYOUT_USD, Math.round(v * 100) / 100);
+    return Math.round(v * 100) / 100;
   }
   if (b.paymentStatus === 'membership_redeemed') return PLAN_HAIRCUT_VALUE_USD;
   return 0;
@@ -55,14 +60,14 @@ export function mondayOf(iso: string): string {
 }
 
 /** Sum earnings by booking date: today, this calendar week (Mon–Sun), this month. */
-export function summarizeEarnings(bookings: Booking[], today = shopToday()): PeriodTotals {
+export function summarizeEarnings(bookings: Booking[], today = shopToday(), forBarber = false): PeriodTotals {
   const weekStart = mondayOf(today);
   const monthStart = today.slice(0, 7) + '-01';
   let day = 0;
   let week = 0;
   let month = 0;
   for (const b of bookings) {
-    const v = earningOf(b);
+    const v = earningOf(b, forBarber);
     if (v <= 0) continue;
     const bd = b.date;
     if (bd < monthStart) continue;

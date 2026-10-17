@@ -1468,7 +1468,7 @@ export default function BarberDashboard() {
           <div className="min-w-0 flex-1">
             <p className="font-extrabold text-[16px] tracking-tight text-[#141414]">🏠 VIP house calls</p>
             <p className="text-[13px] text-neutral-600 mt-1 leading-relaxed">
-              Go to the customer&apos;s home to cut their hair. Flat $100 per visit, paid in full when they book — you receive $60 per visit.
+              Go to the customer&apos;s home to cut their hair. You receive $60 per visit.
             </p>
           </div>
           <button

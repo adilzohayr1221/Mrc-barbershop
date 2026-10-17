@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listBookings, getBarbers, listGifts, listTips, inSalon } from '@/lib/store';
 import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
-import { summarizeEarnings, countHaircuts, addPeriods, addCounts, summarizeGiftEarnings, countGiftHaircuts, summarizeTipEarnings } from '@/lib/earnings';
+import { summarizeEarnings, countHaircuts, addPeriods, addCounts, summarizeGiftEarnings, countGiftHaircuts, summarizeTipEarnings, shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       return {
         id: b.id,
         name: b.name,
-        earnings: addPeriods(addPeriods(summarizeEarnings(mine), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)),
+        earnings: addPeriods(addPeriods(summarizeEarnings(mine, shopToday(), true), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)),
         haircuts: addCounts(countHaircuts(mine), countGiftHaircuts(mineGifts)),
       };
     })
