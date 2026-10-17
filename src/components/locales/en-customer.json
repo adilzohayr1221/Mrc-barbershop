@@ -45,6 +45,8 @@
  "book.vipPerPerson": "$100 per person",
  "book.peopleWord": "people",
  "book.addressLabel": "Your home address",
+ "book.notesLabel": "Notes for your barber (optional)",
+ "book.notesPlaceholder": "Apartment, gate code, parking — anything that helps",
  "book.addressPlaceholder": "Street, city, ZIP",
  "book.addressRequired": "Please enter your home address for the VIP visit.",
  "book.whereHome": "At your home",

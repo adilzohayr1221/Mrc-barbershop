@@ -26,6 +26,7 @@ interface MyBooking {
   paymentStatus: 'paid' | 'refunded' | 'paid_in_full' | null;
   houseCall?: boolean;
   homeAddress?: string | null;
+  visitNotes?: string | null;
   depositPaid: number | null;
   remaining: number | null;
   hasSavedCard: boolean;
@@ -87,6 +88,9 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
           <span className="truncate">{b.branchName} — {b.branchAddress}</span>
         )}
       </div>
+      {b.houseCall && b.visitNotes && (
+        <div className="text-xs mt-0.5 text-neutral-500 truncate">📝 {b.visitNotes}</div>
+      )}
       {!inactive && (
         <div className="mt-2.5 flex flex-wrap gap-2">
           <button

@@ -30,6 +30,7 @@ interface Confirmation {
   houseCall?: boolean;
   homeAddress?: string;
   vipPeople?: number;
+  visitNotes?: string;
 }
 
 function fmtDate(iso: string) {
@@ -70,6 +71,7 @@ export default function BookPage() {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState(''); // VIP home visits only
   const [vipPeople, setVipPeople] = useState(1); // people covered by the visit ($100 each)
+  const [visitNotes, setVisitNotes] = useState(''); // optional notes for the barber (apt, gate code…)
   const [planAvailable, setPlanAvailable] = useState(false);
   const [planOptions, setPlanOptions] = useState<{ id: string; planName: string; planPrice: number }[]>([]);
   const [planChoice, setPlanChoice] = useState<string>('');
@@ -290,7 +292,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId, houseCall: isVip || undefined, homeAddress: isVip ? address.trim() : undefined, vipPeople: isVip ? vipPeople : undefined }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, paymentIntentId, houseCall: isVip || undefined, homeAddress: isVip ? address.trim() : undefined, vipPeople: isVip ? vipPeople : undefined, visitNotes: isVip && visitNotes.trim() ? visitNotes.trim() : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
@@ -332,7 +334,7 @@ export default function BookPage() {
             )}
             <p><span className="text-neutral-500 text-sm block">{t('book.when')}</span><b>{fmtDate(done.date)} at {formatTime12h(done.time)}</b></p>
             {done.houseCall ? (
-              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>🏠 {t('book.whereHome')}</b><span className="block text-sm text-neutral-600">{done.homeAddress}</span>{(done.vipPeople ?? 1) > 1 && <span className="block text-sm text-neutral-600">👥 {done.vipPeople} {t('book.peopleWord')}</span>}</p>
+              <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>🏠 {t('book.whereHome')}</b><span className="block text-sm text-neutral-600">{done.homeAddress}</span>{(done.vipPeople ?? 1) > 1 && <span className="block text-sm text-neutral-600">👥 {done.vipPeople} {t('book.peopleWord')}</span>}{done.visitNotes && <span className="block text-sm text-neutral-600">📝 {done.visitNotes}</span>}</p>
             ) : (
               <p><span className="text-neutral-500 text-sm block">{t('book.where')}</span><b>{done.branchAddress}</b></p>
             )}
@@ -562,6 +564,18 @@ export default function BookPage() {
             <div className="min-w-0">
               <label className="label"><span className="inline-flex items-center gap-1.5">🏠 {t('book.addressLabel')}</span></label>
               <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t('book.addressPlaceholder')} autoComplete="street-address" />
+            </div>
+          )}
+          {isVip && (
+            <div className="min-w-0">
+              <label className="label"><span className="inline-flex items-center gap-1.5">📝 {t('book.notesLabel')}</span></label>
+              <textarea
+                className="input min-h-[76px] resize-y"
+                value={visitNotes}
+                onChange={(e) => setVisitNotes(e.target.value.slice(0, 300))}
+                placeholder={t('book.notesPlaceholder')}
+                maxLength={300}
+              />
             </div>
           )}
         </div>

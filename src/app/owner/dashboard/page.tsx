@@ -369,6 +369,9 @@ function BookingsTab({ bookings, setBookings }: { bookings: FullBooking[]; setBo
             {b.serviceName} with {b.barberName} · {b.customerPhone}
           </div>
           <div className="text-xs text-neutral-600 mt-0.5">{b.houseCall ? `🏠 VIP home visit — ${b.homeAddress ?? ''}${(b.vipPeople ?? 1) > 1 ? ` · ${b.vipPeople} people` : ''}` : b.branchAddress}</div>
+          {b.houseCall && b.visitNotes && (
+            <div className="text-xs text-neutral-500 mt-0.5">📝 {b.visitNotes}</div>
+          )}
           {b.completedAt && (
             <div className="mt-2.5 flex items-center gap-3 rounded-2xl bg-[#f7f2e2] border border-[#e6dabf] p-2.5">
               {b.completionPhotoPath ? (

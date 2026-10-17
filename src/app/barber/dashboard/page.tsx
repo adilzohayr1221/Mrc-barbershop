@@ -96,6 +96,7 @@ function VipVisitInfo({ b }: { b: ScheduleBooking }) {
           </a>
         </>
       )}
+      {b.visitNotes && <span className="basis-full text-[13px] text-neutral-600">📝 {b.visitNotes}</span>}
     </div>
   );
 }

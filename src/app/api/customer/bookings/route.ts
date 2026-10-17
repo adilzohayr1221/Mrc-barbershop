@@ -69,6 +69,7 @@ export async function GET(req: Request) {
         price: b.houseCall ? (b.servicePrice ?? price) : price,
         houseCall: b.houseCall === true,
         homeAddress: b.houseCall ? (b.homeAddress ?? null) : null,
+        visitNotes: b.houseCall ? (b.visitNotes ?? null) : null,
         branchName: branchMap.get(b.branchId)?.name ?? '',
         branchAddress: branchMap.get(b.branchId)?.address ?? '',
         salonName: salonNameMap.get(salonOf(b)) ?? 'MRC Barbershops',

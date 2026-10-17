@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const houseCall = body?.houseCall === true;
   const vipPeople = houseCall ? parseVipPeople(body?.vipPeople) : 1;
   const homeAddress = typeof body?.homeAddress === 'string' ? body.homeAddress.trim() : '';
+  const visitNotes = houseCall && typeof body?.visitNotes === 'string' ? body.visitNotes.trim().slice(0, 300) : '';
   if (houseCall && useMembership) {
     return NextResponse.json({ error: 'VIP home visits are paid in full — plans do not cover them.' }, { status: 400 });
   }
@@ -227,19 +228,19 @@ export async function POST(req: Request) {
     stripeCustomerId,
     stripePaymentMethodId,
     servicePrice: finalPrice,
-    ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}),
+    ...(houseCall ? { houseCall: true, homeAddress, vipPeople, visitNotes: visitNotes || null } : {}),
   };
   await saveBooking(booking);
   // The barber gets a push the moment he has a new haircut.
   void sendPushToUser('barber', barberId, {
     title: houseCall ? 'New VIP home visit 🏠' : 'New booking ✂️',
     body: houseCall
-      ? `Home visit with ${customerName.trim()} — ${date} at ${time}.${vipPeople > 1 ? ` ${vipPeople} people.` : ''} Address: ${homeAddress}`
+      ? `Home visit with ${customerName.trim()} — ${date} at ${time}.${vipPeople > 1 ? ` ${vipPeople} people.` : ''} Address: ${homeAddress}${visitNotes ? ` Note: ${visitNotes}` : ''}`
       : `${service.name} with ${customerName.trim()} — ${date} at ${time}.`,
     url: '/barber/dashboard',
   });
   return NextResponse.json(
-    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: houseCall ? 'VIP Home Visit' : service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}) } },
+    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: houseCall ? 'VIP Home Visit' : service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress, vipPeople, visitNotes: visitNotes || undefined } : {}) } },
     { status: 201 }
   );
 }

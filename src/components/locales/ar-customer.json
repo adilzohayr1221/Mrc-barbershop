@@ -45,6 +45,8 @@
  "book.vipPerPerson": "١٠٠ دولار للشخص",
  "book.peopleWord": "أشخاص",
  "book.addressLabel": "عنوان بيتك",
+ "book.notesLabel": "ملاحظات للحلاق (اختياري)",
+ "book.notesPlaceholder": "رقم الشقة، كود البوابة، مكان الركنة — أي حاجة تساعد",
  "book.addressPlaceholder": "الشارع، المدينة، الرمز البريدي",
  "book.addressRequired": "من فضلك اكتب عنوان بيتك لزيارة VIP.",
  "book.whereHome": "في بيتك",
