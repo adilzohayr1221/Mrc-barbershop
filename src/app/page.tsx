@@ -29,7 +29,7 @@ export default function Home() {
       <div className="relative">
         <Image
           src="/logo.jpg"
-          alt="MRC Barbershop logo"
+          alt="MRC Barbershops logo"
           width={132}
           height={132}
           className="hero-logo"
@@ -41,7 +41,7 @@ export default function Home() {
         Baltimore · Maryland
       </p>
       <h1 className="mt-2 text-5xl font-extrabold tracking-tight text-center leading-tight">
-        <span className="gold-text">MRC Barbershop</span>
+        <span className="gold-text">MRC Barbershops</span>
       </h1>
 
       <div className="ornament w-56 mt-5">
@@ -77,7 +77,7 @@ export default function Home() {
         <div className="map-frame relative h-44 overflow-hidden">
           <Image
             src="/interior.jpg"
-            alt="Inside MRC Barbershop"
+            alt="Inside MRC Barbershops"
             fill
             className="object-cover"
           />

@@ -106,7 +106,7 @@ function ClaimInner() {
             <p className="text-[48px]">🎁</p>
             <h1 className="font-extrabold text-[22px] mt-2 text-[#141414]">You&apos;ve received a gift!</h1>
             <p className="text-neutral-600 text-[14px] mt-2 leading-relaxed">
-              Someone gifted you a haircut at MRC Barbershop.
+              Someone gifted you a haircut at MRC Barbershops.
               Log in or create an account to save it to your account.
             </p>
           </div>
@@ -131,7 +131,7 @@ function ClaimInner() {
             className="relative overflow-hidden rounded-3xl p-6 border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)]"
             style={{ background: 'linear-gradient(135deg, #fdf8ea 0%, #f6ead0 100%)' }}
           >
-            <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">MRC Barbershop · Gift card</p>
+            <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">MRC Barbershops · Gift card</p>
             <h2 className="font-extrabold text-[22px] mt-2 text-[#141414]">🎁 {gift.serviceName}</h2>
             <p className="text-neutral-600 text-[14px] mt-1">
               From {gift.buyerName} · ${gift.price.toFixed(2)}

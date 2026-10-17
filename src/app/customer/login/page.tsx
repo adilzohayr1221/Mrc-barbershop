@@ -100,7 +100,7 @@ function CustomerLoginInner() {
   return (
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full flex flex-col">
       <div className="flex flex-col items-center mt-6 mb-7">
-        <Image src="/logo.jpg" alt="MRC Barbershop" width={84} height={84} className="hero-logo" />
+        <Image src="/logo.jpg" alt="MRC Barbershops" width={84} height={84} className="hero-logo" />
         <h1 className="page-title mt-4"><span className="gold-text">{t('login.welcome')}</span></h1>
         <p className="page-sub mt-1">{t('login.sub')}</p>
       </div>

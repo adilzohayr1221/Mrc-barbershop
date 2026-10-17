@@ -173,7 +173,7 @@ export default function PartnersPage() {
           <span className="ornament-diamond" />
         </div>
         <p className="mt-4 text-neutral-600 text-[15px] leading-relaxed max-w-md mx-auto">
-          The same booking system MRC Barbershop runs on — your own customer app,
+          The same booking system MRC Barbershops runs on — your own customer app,
           barber app and owner dashboard, with your name on it.
         </p>
         <a href="#request" className="gold-btn rounded-2xl px-8 py-4 text-[16px] font-extrabold inline-flex items-center gap-2 mt-7">
@@ -253,14 +253,14 @@ export default function PartnersPage() {
         <LeadForm />
         <p className="text-center mt-8">
           <Link href="/" className="text-sm text-neutral-500 underline underline-offset-4">
-            ← Back to MRC Barbershop
+            ← Back to MRC Barbershops
           </Link>
         </p>
       </section>
 
       <footer className="px-6 py-8 text-center">
         <p className="text-[12px] text-neutral-400 flex items-center justify-center gap-1.5">
-          <MapPinIcon size={13} className="text-gold/60" /> Powered by MRC Barbershop · Baltimore, MD
+          <MapPinIcon size={13} className="text-gold/60" /> Powered by MRC Barbershops · Baltimore, MD
         </p>
       </footer>
     </main>

@@ -23,14 +23,14 @@ const SITE_URL = 'https://mrc-barbershop-mrc-0043.vercel.app';
 const OG_IMAGE = `${SITE_URL}/logo.jpg`;
 
 export const metadata: Metadata = {
-  title: "MRC Barbershop",
-  description: "Book your cut at MRC Barbershop — Baltimore, MD",
+  title: "MRC Barbershops",
+  description: "Book your cut at MRC Barbershops — Baltimore, MD",
   themeColor: "#faf6ea",
   metadataBase: new URL(SITE_URL),
   openGraph: {
-    title: "MRC Barbershop",
-    description: "Book your cut at MRC Barbershop — Baltimore, MD",
-    siteName: "MRC Barbershop",
+    title: "MRC Barbershops",
+    description: "Book your cut at MRC Barbershops — Baltimore, MD",
+    siteName: "MRC Barbershops",
     type: "website",
     url: SITE_URL,
     images: [
@@ -38,20 +38,20 @@ export const metadata: Metadata = {
         url: OG_IMAGE,
         width: 1284,
         height: 1284,
-        alt: "MRC Barbershop",
+        alt: "MRC Barbershops",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "MRC Barbershop",
-    description: "Book your cut at MRC Barbershop — Baltimore, MD",
+    title: "MRC Barbershops",
+    description: "Book your cut at MRC Barbershops — Baltimore, MD",
     images: [OG_IMAGE],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "MRC Barbershop",
+    title: "MRC Barbershops",
   },
   icons: {
     icon: "/icons/icon-192.png",

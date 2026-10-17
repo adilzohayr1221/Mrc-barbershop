@@ -79,7 +79,7 @@ function MembershipWallet({
         style={{ background: 'linear-gradient(135deg, #1c1a15 0%, #0d0d0d 100%)' }}>
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">MRC Barbershop</p>
+            <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">MRC Barbershops</p>
             <h2 className="font-extrabold text-[20px] mt-1 text-white">{m.planName ?? 'Monthly Plan'}</h2>
           </div>
           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${m.status === 'active' ? 'bg-green-600/10 text-green-700 border border-green-600/30' : 'bg-red-600/10 text-red-700 border border-red-600/30'}`}>

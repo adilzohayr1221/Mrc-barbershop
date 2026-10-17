@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — MRC Barbershop',
-  description: 'How MRC Barbershop collects, uses, and protects your data.',
+  title: 'Privacy Policy — MRC Barbershops',
+  description: 'How MRC Barbershops collects, uses, and protects your data.',
 };
 
 export default function PrivacyPage() {

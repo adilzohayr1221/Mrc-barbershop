@@ -115,7 +115,7 @@ export default function ForSalons() {
         <div className="flex justify-center">
           <Image
             src="/logo.jpg"
-            alt="MRC Barbershop logo"
+            alt="MRC Barbershops logo"
             width={96}
             height={96}
             className="rounded-full border-2 border-gold/50 shadow-[0_0_24px_rgba(212,175,55,0.35)]"
@@ -266,7 +266,7 @@ export default function ForSalons() {
         </a>
         <p className="mt-8 text-[12px] text-neutral-400">
           <Link href="/" className="underline">
-            MRC Barbershop
+            MRC Barbershops
           </Link>{" "}
           · Baltimore, MD
         </p>

@@ -89,9 +89,9 @@ function PayInner() {
 
   return (
     <main className="flex-1 flex flex-col items-center px-5 py-10">
-      <Image src="/logo.jpg" alt="MRC Barbershop logo" width={84} height={84} className="hero-logo" priority />
+      <Image src="/logo.jpg" alt="MRC Barbershops logo" width={84} height={84} className="hero-logo" priority />
       <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-center">
-        <span className="gold-text">MRC Barbershop</span>
+        <span className="gold-text">MRC Barbershops</span>
       </h1>
 
       {notFound ? (

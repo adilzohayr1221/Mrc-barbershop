@@ -42,17 +42,17 @@ export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 bg-[#faf6ea]/85 backdrop-blur-md border-b border-[#e6dabf]">
       <div className="max-w-md mx-auto px-4 py-2.5 flex items-center gap-3">
-        <Link href={home} className="flex items-center gap-2.5" aria-label="MRC Barbershop home">
+        <Link href={home} className="flex items-center gap-2.5" aria-label="MRC Barbershops home">
           <Image
             src="/logo.jpg"
-            alt="MRC Barbershop logo"
+            alt="MRC Barbershops logo"
             width={38}
             height={38}
             className="rounded-full border-2 border-[#a8821f]/70 shadow-[0_0_14px_rgba(212,175,55,0.35)]"
             priority
           />
           <span className="font-extrabold tracking-tight text-[17px] leading-none">
-            <span className="gold-text">MRC Barbershop</span>
+            <span className="gold-text">MRC Barbershops</span>
           </span>
         </Link>
         {isCustomerArea && customerLoggedIn && (

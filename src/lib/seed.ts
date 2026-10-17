@@ -10,14 +10,14 @@ const OWNER_PIN_HASH = '$2b$10$n6zG.SoUYMHzn9tcPIGpyuntZCEiW02C8ZJ8z4cQ/ADjaIaAT
 const SEED_BRANCHES: Branch[] = [
   {
     id: 'branch-1',
-    name: 'MRC Barbershop — S Broadway',
+    name: 'MRC Barbershops — S Broadway',
     address: '127 S Broadway, Baltimore, MD 21231',
     lat: 39.28954,
     lng: -76.5933,
   },
   {
     id: 'branch-2',
-    name: "MRC Barbershop — O'Donnell St",
+    name: "MRC Barbershops — O'Donnell St",
     address: "2904 O'Donnell St, Baltimore, MD 21224",
     lat: 39.28052,
     lng: -76.57518,

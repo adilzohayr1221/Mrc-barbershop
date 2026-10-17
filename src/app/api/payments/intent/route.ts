@@ -105,7 +105,7 @@ export async function POST(req: Request) {
         serviceName: service.name,
         kind: 'booking_deposit',
       },
-      description: `MRC Barbershop — $${deposit.toFixed(2)} booking deposit for ${service.name} with ${barber.name} on ${date} at ${time}`,
+      description: `MRC Barbershops — $${deposit.toFixed(2)} booking deposit for ${service.name} with ${barber.name} on ${date} at ${time}`,
     });
     return NextResponse.json({
       ok: true,

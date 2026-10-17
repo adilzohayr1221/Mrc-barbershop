@@ -212,7 +212,7 @@ export default function OwnerDashboard() {
     <main className="flex-1 px-4 py-6 max-w-md mx-auto w-full">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/80">MRC Barbershop</p>
+          <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/80">MRC Barbershops</p>
           <h1 className="page-title mt-1"><span className="gold-text">Shop management</span></h1>
         </div>
         <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-neutral-600 hover:text-gold transition-colors shrink-0">

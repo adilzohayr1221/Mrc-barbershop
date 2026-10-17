@@ -54,7 +54,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (amount > 0) {
     const result = await payoutToBarber(booking.barberId, amount, {
       idempotencyKey: `payout-booking-${booking.id}`,
-      description: `MRC Barbershop — haircut payout (${booking.date} ${booking.time})`,
+      description: `MRC Barbershops — haircut payout (${booking.date} ${booking.time})`,
       metadata: { kind: 'booking_payout', bookingId: booking.id },
     });
     if (!result.ok) {

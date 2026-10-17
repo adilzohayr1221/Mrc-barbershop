@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     .filter((b) => b.active)
     .map((b) => `- ${b.name}${b.skills && b.skills.length ? ` (skills: ${b.skills.join(', ')})` : ''}`);
 
-  const systemPrompt = `You are the MRC Barbershop helper, a friendly assistant inside the customer's app.
+  const systemPrompt = `You are the MRC Barbershops helper, a friendly assistant inside the customer's app.
 
 RULES (never break these):
 - Answer ONLY from the SHOP DATA below. NEVER invent barbers, services, prices, hours, or policies.

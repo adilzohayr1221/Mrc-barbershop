@@ -9,7 +9,7 @@ export default function ShopIllustration() {
   const scallops = Array.from({ length: 15 }, () => 'q 10 12 20 0').join(' ');
   return (
     <div className="rounded-2xl overflow-hidden mb-4 mx-auto border border-gold/25" style={{ background: '#faf5e9', maxWidth: 280 }}>
-      <svg viewBox="0 0 420 250" className="w-full h-auto block" role="img" aria-label="MRC Barbershop storefront">
+      <svg viewBox="0 0 420 250" className="w-full h-auto block" role="img" aria-label="MRC Barbershops storefront">
         {/* ground */}
         <line x1="12" y1="226" x2="408" y2="226" stroke="#1a1a1a" strokeWidth="5" strokeLinecap="round" />
 

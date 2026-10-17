@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ barberI
         barberName: barber.name,
         ...(payerName ? { payerName } : {}),
       },
-      description: `Walk-in payment to ${barber.name} — MRC Barbershop`,
+      description: `Walk-in payment to ${barber.name} — MRC Barbershops`,
     });
     return NextResponse.json({ ok: true, clientSecret: intent.client_secret, amount });
   } catch (e) {

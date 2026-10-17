@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     const { payoutToBarber } = await import('@/lib/payouts');
     const result = await payoutToBarber(session.barberId, gift.price, {
       idempotencyKey: `payout-gift-${gift.id}`,
-      description: `MRC Barbershop — gift haircut payout (${gift.serviceName})`,
+      description: `MRC Barbershops — gift haircut payout (${gift.serviceName})`,
       metadata: { kind: 'gift_payout', giftId: gift.id },
     });
     if (result.ok) {

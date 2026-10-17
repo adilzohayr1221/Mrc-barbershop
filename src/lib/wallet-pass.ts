@@ -8,7 +8,7 @@ import JSZip from 'jszip';
 
 const PASS_TYPE_ID = 'pass.com.mrc.barbershop';
 const TEAM_ID = '756WTBLYPA';
-const ORG_NAME = 'MRC Barbershop';
+const ORG_NAME = 'MRC Barbershops';
 
 function certDir(): string {
   return process.env.WALLET_CERT_DIR || path.join(process.cwd(), 'certs');
@@ -34,13 +34,13 @@ function buildPassJson(f: PassFields): object {
     serialNumber: f.serialNumber,
     teamIdentifier: TEAM_ID,
     organizationName: ORG_NAME,
-    description: `MRC Barbershop — ${f.title}`,
+    description: `MRC Barbershops — ${f.title}`,
     foregroundColor: 'rgb(42, 33, 24)',
     backgroundColor: 'rgb(250, 245, 232)',
     labelColor: 'rgb(168, 130, 31)',
     storeCard: {
       headerFields: [{ key: 'member', label: 'MEMBER', value: f.customerName }],
-      primaryFields: [{ key: 'title', label: 'MRC BARBERSHOP', value: f.title }],
+      primaryFields: [{ key: 'title', label: 'MRC BARBERSHOPS', value: f.title }],
       secondaryFields: [{ key: 'valid', label: 'STATUS', value: f.subtitle }],
       auxiliaryFields: (f.extra || []).map((e) => ({
         key: e.key,
@@ -51,7 +51,7 @@ function buildPassJson(f: PassFields): object {
         {
           key: 'terms',
           label: 'Terms',
-          value: 'Present this card at MRC Barbershop. Non-transferable.',
+          value: 'Present this card at MRC Barbershops. Non-transferable.',
         },
       ],
     },
@@ -67,12 +67,12 @@ function buildPassJson(f: PassFields): object {
       {
         latitude: 39.28954,
         longitude: -76.5933,
-        relevantText: 'MRC Barbershop is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
+        relevantText: 'MRC Barbershops is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
       },
       {
         latitude: 39.28052,
         longitude: -76.57518,
-        relevantText: 'MRC Barbershop is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
+        relevantText: 'MRC Barbershops is nearby \u2014 your chair is waiting. Walk in for a fresh cut today.',
       },
     ],
   };

@@ -68,7 +68,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ barberI
     const { payoutToBarber } = await import('@/lib/payouts');
     const result = await payoutToBarber(barberId, amount, {
       idempotencyKey: `payout-walkin-${payment.id}`,
-      description: `MRC Barbershop — walk-in payment ($${amount.toFixed(2)})`,
+      description: `MRC Barbershops — walk-in payment ($${amount.toFixed(2)})`,
       metadata: { kind: 'walkin_payout', walkinId: payment.id },
     });
     if (result.ok) {

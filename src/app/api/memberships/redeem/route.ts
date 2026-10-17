@@ -170,7 +170,7 @@ export async function POST(req: Request) {
     const payoutAmount = membershipPayoutPerWeek(membership);
     const result = await payoutToBarber(session.barberId, payoutAmount, {
       idempotencyKey: `payout-membership-${membership.id}-${current.index}-${membership.currentPeriodStart}`,
-      description: `MRC Barbershop — plan haircut payout (${current.label})`,
+      description: `MRC Barbershops — plan haircut payout (${current.label})`,
       metadata: { kind: 'membership_payout', membershipId: membership.id },
     });
     if (result.ok) payoutTransferId = result.transferId ?? null;

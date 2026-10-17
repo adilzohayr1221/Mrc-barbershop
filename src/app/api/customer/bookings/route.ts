@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   await Promise.all(
     salonIds.map(async (sid) => {
       if (sid === PLATFORM_SALON_ID) {
-        salonNameMap.set(sid, 'MRC Barbershop');
+        salonNameMap.set(sid, 'MRC Barbershops');
       } else {
         const s = await getSalon(sid);
         salonNameMap.set(sid, s?.name || 'Barbershop');
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
         price,
         branchName: branchMap.get(b.branchId)?.name ?? '',
         branchAddress: branchMap.get(b.branchId)?.address ?? '',
-        salonName: salonNameMap.get(salonOf(b)) ?? 'MRC Barbershop',
+        salonName: salonNameMap.get(salonOf(b)) ?? 'MRC Barbershops',
         // Payment state for in-shop collection of the remaining balance.
         paymentStatus: b.paymentStatus ?? null,
         depositPaid: b.amountPaid ?? null,

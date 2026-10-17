@@ -1,4 +1,4 @@
-// Shared data model types for MRC Barbershop.
+// Shared data model types for MRC Barbershops.
 
 // ---- Multi-salon tenancy -------------------------------------------------
 // Every shop-level record belongs to one salon via `salonId`.

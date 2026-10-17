@@ -114,7 +114,7 @@ export async function POST(req: Request) {
         payment_method: paymentMethod!,
         off_session: true,
         confirm: true,
-        description: `MRC Barbershop — $${tipAmount.toFixed(2)} tip for ${serviceName}`,
+        description: `MRC Barbershops — $${tipAmount.toFixed(2)} tip for ${serviceName}`,
         metadata: { kind: 'tip', source, sourceId, barberId },
       },
       { idempotencyKey: `tip-${source}-${sourceId}` }
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
     const { payoutToBarber } = await import('@/lib/payouts');
     const result = await payoutToBarber(barberId, tipAmount, {
       idempotencyKey: `payout-tip-${tip.id}`,
-      description: `MRC Barbershop — customer tip ($${tipAmount.toFixed(2)})`,
+      description: `MRC Barbershops — customer tip ($${tipAmount.toFixed(2)})`,
       metadata: { kind: 'tip_payout', tipId: tip.id },
     });
     if (result.ok) {

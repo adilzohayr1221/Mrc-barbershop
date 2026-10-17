@@ -91,7 +91,7 @@ export async function POST(req: Request) {
         payment_method: booking.stripePaymentMethodId,
         off_session: true,
         confirm: true,
-        description: `MRC Barbershop — remaining $${remaining.toFixed(2)} for ${service.name} (${booking.date} ${booking.time})`,
+        description: `MRC Barbershops — remaining $${remaining.toFixed(2)} for ${service.name} (${booking.date} ${booking.time})`,
         metadata: { kind: 'booking_remaining', bookingId: booking.id, barberId: booking.barberId },
       },
       { idempotencyKey: `collect-${booking.id}-${token}` }

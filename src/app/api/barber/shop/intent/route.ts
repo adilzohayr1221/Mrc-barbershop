@@ -45,7 +45,7 @@ export async function POST(req: Request) {
         barberId: me.id,
         barberName: me.name,
       },
-      description: `MRC Barbershop — supply shop: ${quantity} x ${product.name} ($${total.toFixed(2)})`,
+      description: `MRC Barbershops — supply shop: ${quantity} x ${product.name} ($${total.toFixed(2)})`,
     });
     return NextResponse.json({ ok: true, clientSecret: intent.client_secret, amount: total, quantity });
   } catch (e) {

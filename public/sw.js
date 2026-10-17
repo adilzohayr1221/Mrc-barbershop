@@ -1,4 +1,4 @@
-/* MRC Barbershop service worker.
+/* MRC Barbershops service worker.
    - App pages and API: always network (booking data must stay fresh).
    - Map tiles (Esri satellite + labels): cache-first on the device, so the
      map opens instantly on repeat visits, even on a weak connection. */
@@ -88,7 +88,7 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch (_) {}
-  const title = data.title || 'MRC Barbershop';
+  const title = data.title || 'MRC Barbershops';
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || '',

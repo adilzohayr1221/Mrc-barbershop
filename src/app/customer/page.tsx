@@ -106,7 +106,7 @@ export default function CustomerHome() {
   return (
     <main className="flex-1 w-full">
       <div className="px-4 pt-5 pb-6 max-w-2xl mx-auto w-full">
-        <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/90">MRC Barbershop</p>
+        <p className="text-[11px] font-semibold tracking-[0.3em] uppercase text-gold/90">MRC Barbershops</p>
         <h1 className="page-title mt-1"><span className="gold-text">{t('home.chooseBranch')}</span></h1>
         <p className="page-sub mt-1.5 mb-4">{t('home.tapPin')}</p>
 
