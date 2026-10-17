@@ -72,6 +72,26 @@ export default function SiteHeader() {
     }
   }, [pathname, isCustomerArea]);
 
+  // Brand stacked on two lines so the full name always shows (his request):
+  // "MRC" on top, "Barbershops" underneath. For a shop name with a branch
+  // suffix ("MRC Barbershops — S Broadway") the head goes on line 1 at a
+  // smaller size and the branch part on line 2.
+  const fullName = shopName ?? 'MRC Barbershops';
+  const dashAt = fullName.indexOf(' — ');
+  let brandLine1: string;
+  let brandLine2: string;
+  let brandLine1Size: string;
+  if (dashAt > 0) {
+    brandLine1 = fullName.slice(0, dashAt);
+    brandLine2 = fullName.slice(dashAt + 3);
+    brandLine1Size = 'text-[13.5px]';
+  } else {
+    const spAt = fullName.indexOf(' ');
+    brandLine1 = spAt > 0 ? fullName.slice(0, spAt) : fullName;
+    brandLine2 = spAt > 0 ? fullName.slice(spAt + 1) : '';
+    brandLine1Size = 'text-[17px]';
+  }
+
   return (
     <header className="sticky top-0 z-50 bg-[#faf6ea]/85 backdrop-blur-md border-b border-[#e6dabf]">
       <div className="max-w-md mx-auto px-4 py-2.5 flex items-center gap-3">
@@ -84,8 +104,9 @@ export default function SiteHeader() {
             className="rounded-full border-2 border-[#a8821f]/70 shadow-[0_0_14px_rgba(212,175,55,0.35)] shrink-0"
             priority
           />
-          <span className="font-extrabold tracking-tight text-[17px] leading-tight min-w-0">
-            <span className="gold-text block truncate">{shopName ?? "MRC Barbershops"}</span>
+          <span className="min-w-0 leading-none">
+            <span className={`gold-text block font-extrabold tracking-tight ${brandLine1Size}`}>{brandLine1}</span>
+            {brandLine2 && <span className="gold-text block font-bold text-[12.5px] truncate mt-[3px]">{brandLine2}</span>}
           </span>
         </Link>
         {isCustomerArea && customerLoggedIn && (
