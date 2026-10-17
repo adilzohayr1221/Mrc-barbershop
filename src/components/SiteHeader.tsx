@@ -20,6 +20,39 @@ export default function SiteHeader() {
   const isCustomerArea = (pathname || "").startsWith("/customer") && pathname !== "/customer/login";
   const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  // When the customer is inside one shop (branch page or its booking page),
+  // the header carries that shop's own name instead of the platform brand.
+  const [shopName, setShopName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const p = pathname || "";
+    let branchId: string | null = null;
+    const m = p.match(/^\/customer\/branch\/([^/]+)/);
+    if (m) {
+      branchId = decodeURIComponent(m[1]);
+    } else if (/^\/customer\/book\/[^/]+/.test(p)) {
+      try {
+        branchId = new URLSearchParams(window.location.search).get("branchId");
+      } catch {
+        branchId = null;
+      }
+    }
+    if (!branchId) {
+      setShopName(null);
+      return;
+    }
+    let live = true;
+    fetch("/api/branches")
+      .then((r) => r.json())
+      .then((d) => {
+        const b = (d.branches || []).find((x: { id: string }) => x.id === branchId);
+        if (live) setShopName(b?.name ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (!isCustomerArea) {
@@ -42,17 +75,17 @@ export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 bg-[#faf6ea]/85 backdrop-blur-md border-b border-[#e6dabf]">
       <div className="max-w-md mx-auto px-4 py-2.5 flex items-center gap-3">
-        <Link href={home} className="flex items-center gap-2.5" aria-label="MRC Barbershops home">
+        <Link href={home} className="flex items-center gap-2.5 min-w-0" aria-label={shopName ? `${shopName} home` : "MRC Barbershops home"}>
           <Image
             src="/logo.jpg"
-            alt="MRC Barbershops logo"
+            alt={shopName ? `${shopName} logo` : "MRC Barbershops logo"}
             width={38}
             height={38}
-            className="rounded-full border-2 border-[#a8821f]/70 shadow-[0_0_14px_rgba(212,175,55,0.35)]"
+            className="rounded-full border-2 border-[#a8821f]/70 shadow-[0_0_14px_rgba(212,175,55,0.35)] shrink-0"
             priority
           />
-          <span className="font-extrabold tracking-tight text-[17px] leading-none">
-            <span className="gold-text">MRC Barbershops</span>
+          <span className="font-extrabold tracking-tight text-[17px] leading-tight min-w-0">
+            <span className="gold-text block truncate">{shopName ?? "MRC Barbershops"}</span>
           </span>
         </Link>
         {isCustomerArea && customerLoggedIn && (
