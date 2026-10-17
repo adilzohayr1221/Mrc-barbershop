@@ -423,7 +423,7 @@ export default function BookPage() {
             clientSecret={clientSecret}
             amount={payAmount}
             summary={{
-              serviceName: services.find((s) => s.id === serviceId)?.name || t('book.service'),
+              serviceName: isVip ? 'VIP Home Visit' : (services.find((s) => s.id === serviceId)?.name || t('book.service')),
               barberName: barber?.name || t('book.barber'),
               dateLabel: fmtDate(date),
               time,
@@ -469,22 +469,22 @@ export default function BookPage() {
             </p>
           </div>
         )}
+        {!isVip && (
         <div className="card p-5 overflow-hidden">
           <label className="label"><span className="inline-flex items-center gap-1.5"><ScissorsIcon size={14} className="text-gold" /> {t('book.serviceLabel')}</span></label>
           <select className="input" value={serviceId} onChange={(e) => setServiceId(e.target.value)}>
             {services.map((s) => (
               <option key={s.id} value={s.id}>
-                {isVip
-                  ? `${s.name} (${s.durationMin} min)`
-                  : `${s.name} — $${disc(s.price)}${hasDiscount && s.price !== disc(s.price) ? ` (was $${s.price})` : ''} (${s.durationMin} min)`}
+                {`${s.name} — $${disc(s.price)}${hasDiscount && s.price !== disc(s.price) ? ` (was $${s.price})` : ''} (${s.durationMin} min)`}
               </option>
             ))}
           </select>
-          {hasDiscount && !isVip && (
+          {hasDiscount && (
             <p className="text-[12px] font-bold text-green-800 mt-2">🎓 {t('book.discountApplied')}</p>
           )}
           {services.length === 0 && <p className="text-sm text-neutral-600 mt-2 leading-relaxed">{t('book.noServices')}</p>}
         </div>
+        )}
 
         <div className="card p-5 overflow-hidden">
           <label className="label"><span className="inline-flex items-center gap-1.5"><CalendarIcon size={14} className="text-gold" /> {t('book.day')} <span className="text-neutral-400 font-normal">— {t('book.all14Days')}</span></span></label>

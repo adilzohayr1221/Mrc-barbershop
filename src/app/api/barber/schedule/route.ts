@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     const { collectToken, collectTokenExpiry, stripeCustomerId, stripePaymentMethodId, ...rest } = b;
     return {
       ...rest,
-      serviceName: serviceMap.get(b.serviceId)?.name ?? '',
+      serviceName: b.houseCall ? 'VIP Home Visit' : (serviceMap.get(b.serviceId)?.name ?? ''),
       servicePrice: serviceMap.get(b.serviceId)?.price ?? null,
       customerPhotoUrl: b.customerId ? photoMap.get(b.customerId) ?? null : null,
     };

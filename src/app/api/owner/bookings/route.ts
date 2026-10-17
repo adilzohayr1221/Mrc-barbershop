@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     bookings: bookings.map((b) => ({
       ...b,
       barberName: barberMap.get(b.barberId) ?? '',
-      serviceName: serviceMap.get(b.serviceId)?.name ?? '',
+      serviceName: b.houseCall ? 'VIP Home Visit' : (serviceMap.get(b.serviceId)?.name ?? ''),
       branchAddress: branchMap.get(b.branchId) ?? '',
       customerEmail: b.customerId ? customerMap.get(b.customerId)?.email ?? null : null,
     })),

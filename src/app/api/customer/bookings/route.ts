@@ -64,7 +64,7 @@ export async function GET(req: Request) {
         createdAt: b.createdAt,
         customerName: b.customerName,
         barberName: barberMap.get(b.barberId) ?? '',
-        serviceName: serviceMap.get(b.serviceId)?.name ?? '',
+        serviceName: b.houseCall ? 'VIP Home Visit' : (serviceMap.get(b.serviceId)?.name ?? ''),
         // VIP home visits show the flat $100 package price agreed at booking.
         price: b.houseCall ? (b.servicePrice ?? price) : price,
         houseCall: b.houseCall === true,

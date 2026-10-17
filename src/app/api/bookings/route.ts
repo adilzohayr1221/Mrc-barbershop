@@ -234,12 +234,12 @@ export async function POST(req: Request) {
   void sendPushToUser('barber', barberId, {
     title: houseCall ? 'New VIP home visit 🏠' : 'New booking ✂️',
     body: houseCall
-      ? `${service.name} at home with ${customerName.trim()} — ${date} at ${time}.${vipPeople > 1 ? ` ${vipPeople} people.` : ''} Address: ${homeAddress}`
+      ? `Home visit with ${customerName.trim()} — ${date} at ${time}.${vipPeople > 1 ? ` ${vipPeople} people.` : ''} Address: ${homeAddress}`
       : `${service.name} with ${customerName.trim()} — ${date} at ${time}.`,
     url: '/barber/dashboard',
   });
   return NextResponse.json(
-    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}) } },
+    { ok: true, booking: { id: booking.id, date, time, barberName: barber.name, serviceName: houseCall ? 'VIP Home Visit' : service.name, price: finalPrice, depositPaid: amountPaid, branchAddress: branch.address, ...(houseCall ? { houseCall: true, homeAddress, vipPeople } : {}) } },
     { status: 201 }
   );
 }
