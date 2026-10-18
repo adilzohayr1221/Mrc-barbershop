@@ -3,6 +3,7 @@ import { listBookings, listReviews, getServices, getBarbers, getCustomers, inSal
 import { requireBarber } from '@/lib/auth';
 import { barberSalonId } from '@/lib/salonScope';
 import { shopToday } from '@/lib/earnings';
+import { VIP_BARBER_PAYOUT_USD, vipPeopleOf } from '@/lib/vip';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,9 +45,15 @@ export async function GET(req: Request) {
   // method ids to clients — the barber receives the token only by scanning
   // the customer's QR code.
   const safe = (b: (typeof mine)[number]) => {
-    const { collectToken, collectTokenExpiry, stripeCustomerId, stripePaymentMethodId, ...rest } = b;
+    const { collectToken, collectTokenExpiry, stripeCustomerId, stripePaymentMethodId, amountPaid, ...rest } = b;
     return {
       ...rest,
+      // The barber only ever sees his own share of the money: for a VIP home
+      // visit the collected total ($100 per person) never reaches his
+      // device — the payload carries his $60-per-person share instead.
+      amountPaid: b.houseCall
+        ? Math.min(VIP_BARBER_PAYOUT_USD * vipPeopleOf(b), amountPaid ?? 0)
+        : amountPaid,
       serviceName: b.houseCall ? 'VIP Home Visit' : (serviceMap.get(b.serviceId)?.name ?? ''),
       servicePrice: serviceMap.get(b.serviceId)?.price ?? null,
       customerPhotoUrl: b.customerId ? photoMap.get(b.customerId) ?? null : null,

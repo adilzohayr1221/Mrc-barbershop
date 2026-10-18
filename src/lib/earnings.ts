@@ -89,6 +89,9 @@ export function fmtUSD(n: number): string {
 export function isHaircutDone(b: Booking, today = shopToday()): boolean {
   if (b.status !== 'booked') return false;
   if (b.date < today) return true;
+  // A VIP home visit is paid in full at booking time — that alone does not
+  // make it done. It counts once the barber completes it (proof photo).
+  if (b.houseCall) return !!b.completedAt;
   return b.paymentStatus === 'paid_in_full' || b.paymentStatus === 'membership_redeemed';
 }
 
