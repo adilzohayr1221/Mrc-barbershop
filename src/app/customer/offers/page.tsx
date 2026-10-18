@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ArrowLeftIcon, CheckIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
-import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useCustomerSession } from '@/components/CustomerAuth';
 import { useLang } from '@/components/LanguageContext';
 import { MembershipCodeButton } from '@/components/MembershipCodeButton';
 import { withSalon } from '../salonQuery';
@@ -316,7 +316,7 @@ function WeekDot({ week }: { week: Week }) {  const base = 'w-11 h-11 rounded-fu
 }
 
 function OffersInner() {
-  const { checked, token } = useCustomerAuth();
+  const { checked, token } = useCustomerSession();
   const { t } = useLang();
   const searchParams = useSearchParams();
   const [data, setData] = useState<StatusResp | null>(null);
@@ -330,7 +330,9 @@ function OffersInner() {
   const disc = (p: number) => hasDiscount ? Math.round(p * 0.85 * 100) / 100 : p;
 
   function load() {
-    if (!token) return;
+    // Guests can read the offers freely; plan data is account-based, so
+    // without a session there is simply nothing personal to load.
+    if (!token) { setLoading(false); return; }
     fetch('/api/memberships/status', { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => setData(d))
@@ -369,7 +371,8 @@ function OffersInner() {
   }, [checked, token]);
 
   async function subscribe() {
-    if (!token) return;
+    // Subscribing is account-based: guests go to login first, then return.
+    if (!token) { window.location.href = '/customer/login?next=/customer/offers'; return; }
     setBusy(true);
     setError('');
     try {

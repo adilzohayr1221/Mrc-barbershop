@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { MapPinIcon, CalendarIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
 import DirectionsButton from '@/components/DirectionsButton';
-import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useCustomerSession } from '@/components/CustomerAuth';
 import { useLang } from '@/components/LanguageContext';
 import ShopIllustration from '@/components/ShopIllustration';
 import LoyaltyCard from '@/components/LoyaltyCard';
@@ -31,7 +31,7 @@ function fmtMiles(mi: number, t: (key: string) => string): string {
 }
 
 export default function CustomerHome() {
-  const { checked } = useCustomerAuth();
+  const { checked } = useCustomerSession();
   const { t } = useLang();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [salonPins, setSalonPins] = useState<SalonPin[]>([]);

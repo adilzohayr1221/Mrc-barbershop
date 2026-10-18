@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { ArrowLeftIcon, StarIcon, PoleIcon, ArrowRightIcon } from '@/components/Icons';
 import { BarberListSkeleton } from '@/components/Loading';
 import DirectionsButton from '@/components/DirectionsButton';
-import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useCustomerSession } from '@/components/CustomerAuth';
 import ReviewForm from '@/components/ReviewForm';
 import BarberProfileModal from '@/components/BarberProfileModal';
 import { useLang } from '@/components/LanguageContext';
@@ -28,7 +28,7 @@ function Stars({ rating }: { rating: number }) {
 export default function BranchBarbers() {
   const { t } = useLang();
   const { branchId } = useParams<{ branchId: string }>();
-  const { checked, token } = useCustomerAuth();
+  const { checked, token } = useCustomerSession();
   const [barbers, setBarbers] = useState<PublicBarber[]>([]);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [openReviews, setOpenReviews] = useState<string | null>(null);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useCustomerSession } from '@/components/CustomerAuth';
 
 interface LoyaltyState {
   paidHaircuts: number;
@@ -15,7 +15,7 @@ interface LoyaltyState {
 // Customer loyalty card: "4 haircuts -> the 5th is FREE" (one-time).
 // Shows progress, and the free-haircut QR once earned.
 export default function LoyaltyCard() {
-  const { checked, token } = useCustomerAuth();
+  const { checked, token } = useCustomerSession();
   const [loyalty, setLoyalty] = useState<LoyaltyState | null>(null);
 
   useEffect(() => {

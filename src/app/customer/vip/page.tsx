@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeftIcon, StarIcon, PoleIcon, ArrowRightIcon } from '@/components/Icons';
 import { BarberListSkeleton } from '@/components/Loading';
-import { useCustomerAuth } from '@/components/CustomerAuth';
+import { useCustomerSession } from '@/components/CustomerAuth';
 import { useLang } from '@/components/LanguageContext';
 import { withSalon } from '../salonQuery';
 import type { PublicBarber, Branch } from '@/lib/types';
@@ -25,7 +25,7 @@ function Stars({ rating }: { rating: number }) {
 // home. Flat $100, paid in full at booking; the barber comes to you.
 export default function VipBarbers() {
   const { t } = useLang();
-  const { checked } = useCustomerAuth();
+  const { checked } = useCustomerSession();
   const [barbers, setBarbers] = useState<PublicBarber[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);

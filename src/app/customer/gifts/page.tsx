@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { ArrowLeftIcon } from '@/components/Icons';
 import { BranchPageSkeleton } from '@/components/Loading';
-import { useCustomerAuth, customerToken } from '@/components/CustomerAuth';
+import { useCustomerSession, customerToken } from '@/components/CustomerAuth';
 import { useLang } from '@/components/LanguageContext';
 import PaymentStep from '@/components/PaymentStep';
 import { withSalon } from '../salonQuery';
@@ -198,7 +198,7 @@ function MyGiftRow({ g }: { g: MyGift }) {
 }
 
 export default function GiftsPage() {
-  const { checked, name } = useCustomerAuth();
+  const { checked, name } = useCustomerSession();
   const { t } = useLang();
   const token = () => customerToken();
   const [services, setServices] = useState<Service[]>([]);
@@ -242,6 +242,8 @@ export default function GiftsPage() {
 
   async function startPayment() {
     if (!serviceId) return;
+    // Buying a gift is account-based: guests browse freely, then log in to pay.
+    if (!token()) { window.location.href = '/customer/login?next=/customer/gifts'; return; }
     setBusy(true);
     setError('');
     try {

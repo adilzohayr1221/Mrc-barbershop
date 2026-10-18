@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeftIcon, CheckSealIcon, ScissorsIcon, CalendarIcon, ClockIcon, UserIcon, PhoneIcon, PoleIcon, StarIcon } from '@/components/Icons';
 import { BookFormSkeleton } from '@/components/Loading';
-import { useCustomerAuth, customerToken } from '@/components/CustomerAuth';
+import { useCustomerSession, customerToken } from '@/components/CustomerAuth';
 import BarberProfileModal from '@/components/BarberProfileModal';
 import PaymentStep from '@/components/PaymentStep';
 import { ChatModal } from '@/components/ChatModal';
@@ -59,7 +59,8 @@ export default function BookPage() {
   const searchParams = useSearchParams();
   const branchId = searchParams.get('branchId') || '';
   const isVip = searchParams.get('vip') === '1';
-  const { checked, name: accountName } = useCustomerAuth();
+  const { checked, name: accountName } = useCustomerSession();
+  const router = useRouter();
   const { t } = useLang();
 
   const [barber, setBarber] = useState<PublicBarber | null>(null);
@@ -192,6 +193,9 @@ export default function BookPage() {
     if (!checked) return;
     if (!name && accountName) setName(accountName);
     loadBarber();
+    // Account-based extras only when signed in; guests browse freely and are
+    // asked to log in at the payment step (guideline 5.1.1(v)).
+    if (customerToken()) {
     fetch('/api/memberships/status', { headers: { Authorization: `Bearer ${customerToken()}` } })
       .then((r) => r.json())
       .then((d) => {
@@ -209,6 +213,7 @@ export default function BookPage() {
         }
       })
       .catch(() => {});
+    }
     fetch(withSalon('/api/services'))
       .then((r) => r.json())
       .then((d) => {
@@ -217,15 +222,27 @@ export default function BookPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-    fetch('/api/customer/discount', { headers: { Authorization: `Bearer ${customerToken()}` }, cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => { if (d.discount?.status === 'approved') setHasDiscount(true); })
-      .catch(() => {});
+    if (customerToken()) {
+      fetch('/api/customer/discount', { headers: { Authorization: `Bearer ${customerToken()}` }, cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => { if (d.discount?.status === 'approved') setHasDiscount(true); })
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barberId, branchId, checked, accountName]);
 
+  // Booking and paying are account-based: guests who browsed freely get
+  // sent to login here, then land back on this page (login honors ?next=).
+  function requireLogin(): boolean {
+    if (customerToken()) return false;
+    const next = `/customer/book/${barberId}?branchId=${branchId}${isVip ? '&vip=1' : ''}`;
+    router.replace(`/customer/login?next=${encodeURIComponent(next)}`);
+    return true;
+  }
+
   async function continueToPayment() {
     setError('');
+    if (requireLogin()) return;
     if (!serviceId || !date || !time || name.trim().length < 2 || phone.replace(/\D/g, '').length < 7) {
       setError(t('book.fillAll'));
       return;
@@ -258,6 +275,7 @@ export default function BookPage() {
 
   async function bookWithMembership() {
     setError('');
+    if (requireLogin()) return;
     if (!serviceId || !date || !time || name.trim().length < 2 || phone.replace(/\D/g, '').length < 7) {
       setError(t('book.fillAll'));
       return;

@@ -55,6 +55,19 @@ export default function ReviewForm({
   }
 
   if (!open) {
+    // Guests can read reviews freely; writing one is account-based, so send
+    // them to login and back here afterwards (guideline 5.1.1(v)).
+    if (!token) {
+      const next = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/customer';
+      return (
+        <a
+          href={`/customer/login?next=${encodeURIComponent(next)}`}
+          className="mt-1 inline-block text-sm font-semibold text-gold underline underline-offset-2 decoration-gold/40"
+        >
+          Log in to write a review
+        </a>
+      );
+    }
     return (
       <button
         type="button"

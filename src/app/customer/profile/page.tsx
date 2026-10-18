@@ -130,6 +130,13 @@ export default function CustomerProfile() {
           </span>
         </a>
         <ChangePasswordSection token={token} />
+        <DeleteAccountSection
+          token={token}
+          onDeleted={() => {
+            clearCustomerSession();
+            router.replace('/customer');
+          }}
+        />
         <button
           onClick={logout}
           className="w-full card p-4 flex items-center gap-3 text-left border-red-600/25 hover:border-red-600/50 transition-colors"
@@ -488,6 +495,74 @@ function ChangePasswordSection({ token }: { token: string | null }) {
           <button onClick={submit} disabled={busy} className="gold-btn rounded-2xl py-3 font-bold">
             {busy ? t('profile.saving') : t('profile.saveNewPassword')}
           </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Permanent account deletion (guideline 5.1.1(v)): the customer can delete
+// their own account from inside the app. Two deliberate taps — open the
+// section, then confirm — with the consequences stated up front.
+function DeleteAccountSection({ token, onDeleted }: { token: string | null; onDeleted: () => void }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function doDelete() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch('/api/customer/account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(d?.error || t('profile.deleteFailed'));
+      onDeleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('profile.deleteFailed'));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <button
+        onClick={() => { setOpen(!open); setError(''); }}
+        className="w-full card p-4 flex items-center gap-3 text-left border-red-600/25 hover:border-red-600/50 transition-colors"
+      >
+        <span className="rounded-full w-10 h-10 bg-red-600/10 border border-red-600/30 flex items-center justify-center text-red-700 shrink-0">
+          🗑️
+        </span>
+        <span className="flex-1">
+          <b className="text-[15px] block text-red-700">{t('profile.deleteAccount')}</b>
+          <span className="text-xs text-neutral-500">{t('profile.deleteAccountDesc')}</span>
+        </span>
+        <span className={`text-red-700/60 transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+      </button>
+
+      {open && (
+        <div className="card p-5 mt-2.5 grid gap-4 fade-in border-red-600/25">
+          <p className="text-sm text-neutral-700 leading-relaxed">{t('profile.deleteWarning')}</p>
+          {error && <p className="text-red-700 text-sm bg-red-600/10 border border-red-600/25 rounded-xl px-4 py-3">{error}</p>}
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              onClick={() => setOpen(false)}
+              disabled={busy}
+              className="gold-outline-btn rounded-2xl py-3 font-bold text-[14px]"
+            >
+              {t('profile.deleteKeep')}
+            </button>
+            <button
+              onClick={doDelete}
+              disabled={busy}
+              className="rounded-2xl py-3 font-bold text-[14px] bg-red-700 text-white disabled:opacity-50"
+            >
+              {busy ? t('profile.deleting') : t('profile.deleteConfirm')}
+            </button>
+          </div>
         </div>
       )}
     </section>

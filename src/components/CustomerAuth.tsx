@@ -55,3 +55,38 @@ export function useCustomerAuth(): CustomerSession {
 
   return state;
 }
+
+/**
+ * Soft session read for PUBLIC customer pages: never redirects. Guests get
+ * { checked: true, token: '', name: '' } once the optional token check has
+ * settled, so browsing pages render for everyone and only ask for login at
+ * account-based actions (booking, buying, writing a review). App Store
+ * guideline 5.1.1(v): features that are not account based must be freely
+ * accessible without registration.
+ */
+export function useCustomerSession(): CustomerSession {
+  const [state, setState] = useState<CustomerSession>({ checked: false, token: '', name: '' });
+
+  useEffect(() => {
+    const token = customerToken();
+    if (!token) {
+      setState({ checked: true, token: '', name: '' });
+      return;
+    }
+    fetch('/api/auth/customer', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (!r.ok) throw new Error('unauthorized');
+        return r.json();
+      })
+      .then((d) => {
+        const name = d.customer?.name || localStorage.getItem(CUSTOMER_NAME_KEY) || '';
+        setState({ checked: true, token, name });
+      })
+      .catch(() => {
+        clearCustomerSession();
+        setState({ checked: true, token: '', name: '' });
+      });
+  }, []);
+
+  return state;
+}
