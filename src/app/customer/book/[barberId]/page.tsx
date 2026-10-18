@@ -242,7 +242,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, houseCall: isVip || undefined, vipPeople: isVip ? vipPeople : undefined }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, houseCall: isVip || undefined, vipPeople: isVip ? vipPeople : undefined, homeAddress: isVip ? address.trim() : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.couldNotStartPayment'));

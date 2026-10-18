@@ -1,4 +1,5 @@
 import type { Booking } from './types';
+import { geocodeFreeform, hasCoords } from './geocode';
 
 // VIP home visits (house calls). The owner's fixed model (2026-10-17):
 // the customer pays a flat $100 PER PERSON — every haircut type included —
@@ -11,6 +12,44 @@ export const VIP_PRICE_USD = 100;
 export const VIP_BARBER_PAYOUT_USD = 60;
 export const VIP_MAX_PEOPLE = 6;
 export const VIP_BLOCK_MINUTES = 120;
+// Service area (his decision, 2026-10-18): a home visit must be within
+// 10 miles of the branch the barber is booked from.
+export const VIP_SERVICE_RADIUS_MILES = 10;
+
+/** Great-circle distance in miles between two lat/lng points. */
+export function distanceMiles(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 3958.8;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+export type VipAreaCheck =
+  | { ok: true }
+  | { ok: false; reason: 'unlocated' | 'too_far'; miles?: number };
+
+/**
+ * Is this home address inside the VIP service area of the branch? A branch
+ * without coordinates can't be measured, so it never blocks a booking.
+ */
+export async function checkVipServiceArea(
+  branch: { lat?: number; lng?: number },
+  homeAddress: string
+): Promise<VipAreaCheck> {
+  if (!hasCoords(branch)) return { ok: true };
+  const pt = await geocodeFreeform(homeAddress);
+  if (!pt) return { ok: false, reason: 'unlocated' };
+  const miles = distanceMiles({ lat: branch.lat as number, lng: branch.lng as number }, pt);
+  return miles <= VIP_SERVICE_RADIUS_MILES
+    ? { ok: true }
+    : { ok: false, reason: 'too_far', miles: Math.round(miles * 10) / 10 };
+}
 
 /** People covered by a VIP booking (1 when unset/invalid, capped). */
 export function vipPeopleOf(b: { vipPeople?: number | null }): number {

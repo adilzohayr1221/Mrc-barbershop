@@ -4,7 +4,7 @@ import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
-import { parseVipPeople, vipTotalUSD, vipClash } from '@/lib/vip';
+import { parseVipPeople, vipTotalUSD, vipClash, checkVipServiceArea, VIP_SERVICE_RADIUS_MILES } from '@/lib/vip';
 import type { WorkingHours } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   const { barberId, serviceId, branchId, date, time } = body ?? {};
   const houseCall = body?.houseCall === true;
   const vipPeople = houseCall ? parseVipPeople(body?.vipPeople) : 1;
+  const homeAddress = houseCall && typeof body?.homeAddress === 'string' ? body.homeAddress.trim() : '';
   if (typeof barberId !== 'string' || !barberId) return NextResponse.json({ error: 'barberId required' }, { status: 400 });
   if (typeof serviceId !== 'string' || !serviceId) return NextResponse.json({ error: 'serviceId required' }, { status: 400 });
   if (typeof branchId !== 'string' || !branchId) return NextResponse.json({ error: 'branchId required' }, { status: 400 });
@@ -65,6 +66,25 @@ export async function POST(req: Request) {
   // from barbers who opted in to house calls. No deposit split, no discount.
   if (houseCall && barber.houseCalls !== true) {
     return NextResponse.json({ error: 'This barber does not offer home visits.' }, { status: 400 });
+  }
+  // Service area: the home must be within the radius of the branch, checked
+  // before any payment is taken.
+  if (houseCall) {
+    if (homeAddress.length < 8) {
+      return NextResponse.json({ error: 'Please enter your full home address for the visit.' }, { status: 400 });
+    }
+    const area = await checkVipServiceArea(branch, homeAddress);
+    if (!area.ok) {
+      return NextResponse.json(
+        {
+          error:
+            area.reason === 'unlocated'
+              ? "We couldn't find that address — please check it and try again."
+              : `Sorry — home visits are only available within ${VIP_SERVICE_RADIUS_MILES} miles of the shop.`,
+        },
+        { status: 400 }
+      );
+    }
   }
   // Approved student/military customers pay the discounted price (server-side).
   const finalPrice = houseCall ? vipTotalUSD(vipPeople) : discountPrice(service.price, customer);

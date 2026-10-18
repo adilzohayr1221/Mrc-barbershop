@@ -4,7 +4,7 @@ import { ensureSeeded } from '@/lib/seed';
 import { requireCustomer } from '@/lib/auth';
 import { getStripe, isStripeConfigured, depositFor, toCents } from '@/lib/stripe';
 import { discountPrice } from '@/lib/discount';
-import { parseVipPeople, vipTotalUSD, vipClash } from '@/lib/vip';
+import { parseVipPeople, vipTotalUSD, vipClash, checkVipServiceArea, VIP_SERVICE_RADIUS_MILES } from '@/lib/vip';
 import { buildWeeks, getMembershipById, listActiveMemberships } from '@/lib/membership';
 import { shopToday, shopNowTime } from '@/lib/earnings';
 import { sendPushToUser } from '@/lib/push';
@@ -61,6 +61,22 @@ export async function POST(req: Request) {
   if (!barber || !service || !branch) return NextResponse.json({ error: 'Invalid selection' }, { status: 400 });
   if (!barber.branchIds.includes(branchId)) return NextResponse.json({ error: 'Barber not at this branch' }, { status: 400 });
   if (houseCall && barber.houseCalls !== true) return NextResponse.json({ error: 'This barber does not offer home visits.' }, { status: 400 });
+  // Service area, re-checked at booking time (the address is authoritative
+  // here): the home must be within the radius of the branch.
+  if (houseCall) {
+    const area = await checkVipServiceArea(branch, homeAddress);
+    if (!area.ok) {
+      return NextResponse.json(
+        {
+          error:
+            area.reason === 'unlocated'
+              ? "We couldn't find that address — please check it and try again."
+              : `Sorry — home visits are only available within ${VIP_SERVICE_RADIUS_MILES} miles of the shop.`,
+        },
+        { status: 400 }
+      );
+    }
+  }
 
   // Never book a slot that has already started (shop-local wall clock).
   // The customer pays at booking time, and a past appointment is instantly
