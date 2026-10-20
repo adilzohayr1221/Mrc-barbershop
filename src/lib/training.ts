@@ -5,7 +5,8 @@ import { getDoc, putDoc } from './blob';
 import { getStripe } from './stripe';
 
 export const TRAINING_PRICE_USD = 100;
-const TRAINING_LOOKUP_KEY = 'mrc_training_weekly_100';
+export const TRAINING_WEEKLY_OPTIONS = [100, 50] as const;
+export type TrainingWeeklyUsd = (typeof TRAINING_WEEKLY_OPTIONS)[number];
 const SIGNUPS_PATH = 'data/training-signups.json';
 
 export interface TrainingSignup {
@@ -16,6 +17,7 @@ export interface TrainingSignup {
   dob: string; // YYYY-MM-DD
   address: string;
   status: 'pending' | 'active';
+  weeklyUsd?: number; // plan price per week (100 default, 50 via /train50)
   sessionId?: string;
   subscriptionId?: string;
   stripeCustomerId?: string;
@@ -40,10 +42,11 @@ export async function getTrainingSignupBySession(sessionId: string): Promise<Tra
   return all.find((x) => x.sessionId === sessionId) ?? null;
 }
 
-/** The $100/week training price, created once in Stripe and reused. */
-export async function getOrCreateTrainingPrice(): Promise<string> {
+/** A weekly training price ($100 standard, $50 via /train50), created once in Stripe and reused. */
+export async function getOrCreateTrainingPrice(weeklyUsd: TrainingWeeklyUsd = TRAINING_PRICE_USD): Promise<string> {
   const stripe = getStripe();
-  const existing = await stripe.prices.list({ lookup_keys: [TRAINING_LOOKUP_KEY], limit: 1 });
+  const lookupKey = `mrc_training_weekly_${weeklyUsd}`;
+  const existing = await stripe.prices.list({ lookup_keys: [lookupKey], limit: 1 });
   if (existing.data.length) return existing.data[0].id;
   const product = await stripe.products.create({
     name: 'MRC Barber Training',
@@ -51,11 +54,11 @@ export async function getOrCreateTrainingPrice(): Promise<string> {
   });
   const price = await stripe.prices.create({
     product: product.id,
-    unit_amount: TRAINING_PRICE_USD * 100,
+    unit_amount: weeklyUsd * 100,
     currency: 'usd',
     recurring: { interval: 'week' },
-    lookup_key: TRAINING_LOOKUP_KEY,
-    nickname: 'MRC Training $100/week',
+    lookup_key: lookupKey,
+    nickname: `MRC Training $${weeklyUsd}/week`,
   });
   return price.id;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
-import { getOrCreateTrainingPrice, saveTrainingSignup, type TrainingSignup } from '@/lib/training';
+import { getOrCreateTrainingPrice, saveTrainingSignup, TRAINING_WEEKLY_OPTIONS, type TrainingSignup, type TrainingWeeklyUsd } from '@/lib/training';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,12 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
   }
+  // Plan allowlist: $100/week standard (/train) or $50/week (/train50).
+  // Anything else falls back to the standard $100 plan.
+  const planRaw = typeof body.plan === 'string' ? Number(body.plan) : body.plan;
+  const weeklyUsd: TrainingWeeklyUsd = (TRAINING_WEEKLY_OPTIONS as readonly unknown[]).includes(planRaw)
+    ? (planRaw as TrainingWeeklyUsd)
+    : 100;
   const name = String(body.name ?? '').trim();
   const email = String(body.email ?? '').trim().toLowerCase();
   const phone = String(body.phone ?? '').trim();
@@ -44,6 +50,7 @@ export async function POST(req: Request) {
       dob,
       address,
       status: 'pending',
+      weeklyUsd,
       createdAt: new Date().toISOString(),
     };
     const customer = await stripe.customers.create({
@@ -53,17 +60,18 @@ export async function POST(req: Request) {
       metadata: { kind: 'training', signupId: signup.id, dob, address },
     });
     signup.stripeCustomerId = customer.id;
-    const priceId = await getOrCreateTrainingPrice();
+    const priceId = await getOrCreateTrainingPrice(weeklyUsd);
     const origin = new URL(req.url).origin;
+    const planPath = weeklyUsd === 50 ? '/train50' : '/train';
     const checkout = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customer.id,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/train/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/train?cancelled=1`,
+      cancel_url: `${origin}${planPath}?cancelled=1`,
       subscription_data: {
         metadata: { kind: 'training', signupId: signup.id },
-        description: 'MRC Barber Training — $100/week',
+        description: `MRC Barber Training — $${weeklyUsd}/week`,
       },
       metadata: { kind: 'training', signupId: signup.id },
     });

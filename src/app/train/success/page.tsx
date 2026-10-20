@@ -6,6 +6,7 @@ import Image from 'next/image';
 export default function TrainSuccessPage() {
   const [state, setState] = useState<'checking' | 'active' | 'pending'>('checking');
   const [name, setName] = useState('');
+  const [weeklyUsd, setWeeklyUsd] = useState(100);
 
   useEffect(() => {
     const sid = new URLSearchParams(window.location.search).get('session_id');
@@ -18,6 +19,7 @@ export default function TrainSuccessPage() {
         const d = await r.json().catch(() => ({}));
         if (stop) return;
         if (d.name) setName(d.name);
+        if (d.weeklyUsd) setWeeklyUsd(d.weeklyUsd);
         if (d.active) { setState('active'); return; }
       } catch { /* keep trying below */ }
       tries += 1;
@@ -36,7 +38,7 @@ export default function TrainSuccessPage() {
           <>
             <h1 className="page-title mt-4"><span className="gold-text">You&apos;re enrolled 🎉</span></h1>
             <p className="page-sub mt-2 text-center leading-relaxed">
-              {name ? `Welcome, ${name.split(' ')[0]}. ` : ''}Your first $100 weekly payment went through —
+              {name ? `Welcome, ${name.split(' ')[0]}. ` : ''}Your first {'$'}{weeklyUsd} weekly payment went through —
               your spot in the MRC Barber Training Program is confirmed.
             </p>
           </>
@@ -57,7 +59,7 @@ export default function TrainSuccessPage() {
       {state === 'active' && (
         <div className="card p-6 text-center">
           <p className="text-sm text-neutral-600 leading-relaxed">
-            Your card will be charged $100 every week while you train. Questions? Call MRC Barbershops at (443) 741-5820.
+            Your card will be charged {'$'}{weeklyUsd} every week while you train. Questions? Call MRC Barbershops at (443) 741-5820.
           </p>
         </div>
       )}

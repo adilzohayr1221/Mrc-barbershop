@@ -13,10 +13,10 @@ export async function GET(req: Request) {
   const signup = await getTrainingSignupBySession(sessionId);
   if (!signup) return NextResponse.json({ error: 'Signup not found.' }, { status: 404 });
   if (signup.status === 'active') {
-    return NextResponse.json({ ok: true, active: true, name: signup.name });
+    return NextResponse.json({ ok: true, active: true, name: signup.name, weeklyUsd: signup.weeklyUsd ?? 100 });
   }
   if (!isStripeConfigured()) {
-    return NextResponse.json({ ok: true, active: false, name: signup.name });
+    return NextResponse.json({ ok: true, active: false, name: signup.name, weeklyUsd: signup.weeklyUsd ?? 100 });
   }
   try {
     const session = await getStripe().checkout.sessions.retrieve(sessionId);
@@ -26,11 +26,11 @@ export async function GET(req: Request) {
       signup.paidAt = new Date().toISOString();
       if (typeof session.subscription === 'string') signup.subscriptionId = session.subscription;
       await saveTrainingSignup(signup);
-      return NextResponse.json({ ok: true, active: true, name: signup.name });
+      return NextResponse.json({ ok: true, active: true, name: signup.name, weeklyUsd: signup.weeklyUsd ?? 100 });
     }
-    return NextResponse.json({ ok: true, active: false, name: signup.name });
+    return NextResponse.json({ ok: true, active: false, name: signup.name, weeklyUsd: signup.weeklyUsd ?? 100 });
   } catch (e) {
     console.error('Training verify failed', e);
-    return NextResponse.json({ ok: true, active: false, name: signup.name });
+    return NextResponse.json({ ok: true, active: false, name: signup.name, weeklyUsd: signup.weeklyUsd ?? 100 });
   }
 }
