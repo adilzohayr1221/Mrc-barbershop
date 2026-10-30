@@ -1,5 +1,5 @@
 // Session + PIN auth. Server-side only. No plaintext PINs or passwords are ever stored.
-import { createHmac, timingSafeEqual, scryptSync, randomBytes } from 'node:crypto';
+import { createHmac, createHash, timingSafeEqual, scryptSync, randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
 export interface SessionPayload {
@@ -9,10 +9,22 @@ export interface SessionPayload {
   /** Tenant scope. 'mrc' for the platform owner; the salon's id for salon owners.
    *  Missing on old tokens = 'mrc' (backward compatible). */
   salonId?: string;
+  /** Auth version stamped at login (audit H5/H6, 2026-10-22). When the
+   *  account's authVersion is bumped server-side (deactivation, deletion,
+   *  password reset, salon suspension), older tokens are rejected by the
+   *  active-account guards. Missing on pre-fix tokens = not enforced. */
+  av?: number;
   exp: number; // epoch ms
 }
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — stay logged in across app restarts
+// Audit H5/H6: staff roles (barber, salon owner) get a shorter 7-day token
+// on top of the authVersion revocation checks.
+// Audit M10 (2026-10-29): the OWNER token joins the 7-day schedule too — a
+// 30-day all-powerful token with no revocation was the outlier. Owner
+// tokens are also `av`-stamped (pins doc authVersion) so they can be
+// revoked server-side like staff tokens.
+const STAFF_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function secret(): string {
   const s = process.env.SESSION_SECRET;
@@ -28,18 +40,24 @@ function b64urlDecode<T>(s: string): T {
   return JSON.parse(Buffer.from(s, 'base64url').toString('utf8')) as T;
 }
 
-/** Create a signed session token. `id` is the barberId for barbers, the customerId for customers. */
+/** Create a signed session token. `id` is the barberId for barbers, the customerId for customers.
+ *  `authVersion` is stamped as `av` so the account can revoke outstanding
+ *  tokens by bumping it server-side (barbers, salon owners, and — audit
+ *  M7/M10, 2026-10-29 — customers and the owner too). */
 export function signSession(
   role: 'owner' | 'barber' | 'customer' | 'salon_owner',
   id?: string,
-  salonId?: string
+  salonId?: string,
+  authVersion?: number
 ): string {
+  const staff = role === 'barber' || role === 'salon_owner' || role === 'owner';
   const payload: SessionPayload = {
     role,
     barberId: role === 'barber' ? id : undefined,
     customerId: role === 'customer' ? id : undefined,
     salonId: salonId || (role === 'owner' ? 'mrc' : undefined),
-    exp: Date.now() + TOKEN_TTL_MS,
+    av: authVersion !== undefined ? authVersion : staff ? 0 : undefined,
+    exp: Date.now() + (staff ? STAFF_TOKEN_TTL_MS : TOKEN_TTL_MS),
   };
   const body = b64urlEncode(payload);
   const sig = createHmac('sha256', secret()).update(body).digest('base64url');
@@ -120,6 +138,59 @@ export function verifyPin(pin: string, hash: string): boolean {
 
 export function isValidPinFormat(pin: unknown): pin is string {
   return typeof pin === 'string' && /^\d{4}$/.test(pin);
+}
+
+/** Constant-time comparison of a shared secret header against the configured
+ *  value (audit M14, 2026-10-22). Both sides are SHA-256 hashed first so the
+ *  timingSafeEqual inputs are always the same length. */
+export function secretMatches(provided: string | null | undefined, expected: string | null | undefined): boolean {
+  if (!provided || !expected) return false;
+  const a = createHash('sha256').update(provided).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+/** Signed URL for a private photo (audit H7, 2026-10-22). Dashboards embed
+ *  photos with plain <img> tags (no Authorization header), so private files
+ *  (ID photos, complaint photos, completion photos, profile photos) are
+ *  handed out only as HMAC-signed URLs minted by an authorized API response,
+ *  or to a request carrying a valid session.
+ *  Audit M9 (2026-10-29): signed URLs now carry an EXPIRY (`e`, epoch ms;
+ *  default 60 minutes) so a leaked link dies on its own. verifyPhotoSig
+ *  still accepts the legacy no-expiry signature so URLs minted before this
+ *  change (e.g. inside already-delivered pages) keep working until their
+ *  pages refresh; new mints always expire. */
+export const PHOTO_URL_TTL_MS = 60 * 60 * 1000;
+
+export function signPhotoUrl(name: string, ttlMs: number = PHOTO_URL_TTL_MS): string {
+  const exp = Date.now() + ttlMs;
+  const sig = createHmac('sha256', secret()).update(`photo:${name}:${exp}`).digest('base64url');
+  return `/api/photos/${encodeURIComponent(name)}?s=${sig}&e=${exp}`;
+}
+
+export function verifyPhotoSig(
+  name: string,
+  sig: string | null | undefined,
+  exp?: string | number | null
+): boolean {
+  if (!sig) return false;
+  let actual: Buffer;
+  try {
+    actual = Buffer.from(sig, 'base64url');
+  } catch {
+    return false;
+  }
+  const matches = (msg: string): boolean => {
+    const expected = createHmac('sha256', secret()).update(msg).digest();
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  };
+  if (exp !== undefined && exp !== null && exp !== '') {
+    const expMs = typeof exp === 'number' ? exp : parseInt(exp, 10);
+    if (!Number.isFinite(expMs) || expMs < Date.now()) return false;
+    return matches(`photo:${name}:${expMs}`);
+  }
+  // Legacy pre-expiry signature (no `e` param).
+  return matches(`photo:${name}`);
 }
 
 // ---- Customer password hashing (node:crypto scrypt, no extra deps) ----

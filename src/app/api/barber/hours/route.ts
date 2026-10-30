@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getBarbers, saveBarbers } from '@/lib/store';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import type { WorkingHours } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,7 @@ function sanitizeHours(input: unknown): WorkingHours | null {
 
 // Barber-only: read his own working hours.
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const barbers = await getBarbers();
   const barber = barbers.find((b) => b.id === session.barberId);
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 // Shop policy (owner's rule): at most 2 days off per week (min 5 open days),
 // and at least 6 working hours on each open day.
 export async function PUT(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const workingHours = sanitizeHours(body?.workingHours);

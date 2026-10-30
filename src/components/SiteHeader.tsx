@@ -92,12 +92,16 @@ export default function SiteHeader() {
     brandLine1Size = 'text-[17px]';
   }
 
+  // Presentation only: which nav item matches the current page (for the
+  // gold-glow active pill). Routing and link order are unchanged.
+  const navActive = (href: string) => (pathname || "").startsWith(href);
+
   return (
-    <header className="sticky top-0 z-50 bg-[#faf6ea]/85 backdrop-blur-md border-b border-[#e6dabf]">
+    <header className="sticky top-0 z-50 glass-header">
       <div className="max-w-md mx-auto px-4 py-2.5 flex items-center gap-3">
         <Link href={home} className="flex items-center gap-2.5 min-w-0" aria-label={shopName ? `${shopName} home` : "MRC Barbershops home"}>
           <Image
-            src="/logo.jpg"
+            src="/logo-halloween.png"
             alt={shopName ? `${shopName} logo` : "MRC Barbershops logo"}
             width={38}
             height={38}
@@ -113,7 +117,8 @@ export default function SiteHeader() {
           <nav className="ml-auto flex items-center gap-1.5 shrink-0">
             <Link
               href="/customer/appointments"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-gold transition-colors px-2.5 py-2 rounded-xl min-h-[40px]"
+              aria-current={navActive("/customer/appointments") ? "page" : undefined}
+              className={`glass-nav-item inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-gold px-2.5 py-2 rounded-xl min-h-[40px] ${navActive("/customer/appointments") ? "glass-nav-active" : ""}`}
             >
               <CalendarIcon size={16} className="text-gold" />
               <span className="hidden sm:inline">My appointments</span>
@@ -121,7 +126,8 @@ export default function SiteHeader() {
             </Link>
             <Link
               href="/customer/offers"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-gold transition-colors px-2.5 py-2 rounded-xl min-h-[40px]"
+              aria-current={navActive("/customer/offers") ? "page" : undefined}
+              className={`glass-nav-item inline-flex items-center gap-1.5 text-sm font-semibold text-neutral-700 hover:text-gold px-2.5 py-2 rounded-xl min-h-[40px] ${navActive("/customer/offers") ? "glass-nav-active" : ""}`}
             >
               <StarIcon size={16} className="text-gold" />
               Offers
@@ -129,8 +135,9 @@ export default function SiteHeader() {
             <Link
               href="/customer/profile"
               aria-label="Profile"
+              aria-current={navActive("/customer/profile") ? "page" : undefined}
               title="Profile"
-              className="inline-flex items-center justify-center text-neutral-500 hover:text-gold transition-colors p-1 rounded-full min-h-[40px] min-w-[40px]"
+              className={`glass-nav-item inline-flex items-center justify-center text-neutral-500 hover:text-gold p-1 rounded-full min-h-[40px] min-w-[40px] ${navActive("/customer/profile") ? "glass-nav-active" : ""}`}
             >
               {profilePhoto ? (
                 <img

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getBarberMilestone, saveBarberMilestone } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Owner marks a barber's earned milestone bonus as paid.
 // Body: { barberId: string, which: 'bonus10' | 'bonus100' }
 export async function POST(req: Request) {
-  const session = requireOwner(req);
+  const session = await requireActiveOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const barberId: unknown = body?.barberId;

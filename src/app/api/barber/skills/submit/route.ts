@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { getBarbers, getSkillVerificationByBarberSkill, saveSkillVerification } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +9,7 @@ const MIN_PHOTOS = 3;
 // POST /api/barber/skills/submit — send a skill's photo collection to the
 // owner as one batch for verification. Needs at least 3 photos.
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const skill = body?.skill;

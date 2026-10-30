@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBarbers, listWalkinPayments, saveWalkinPayment, newId } from '@/lib/store';
+import { getBarbers, listWalkinPayments, saveWalkinPayment, newId, claimOnce, releaseClaim } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
 import { getStripe, isStripeConfigured } from '@/lib/stripe';
 import type { WalkinPayment } from '@/lib/types';
@@ -31,27 +31,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ barberI
   if (existing) {
     return NextResponse.json({ ok: true, amount: existing.amount, payoutFailed: existing.payoutFailed ?? false });
   }
+  // Audit M4 (2026-10-22): the scan above races — two simultaneous confirms
+  // both pass it and double-pay (the old payout key was a random record id).
+  // Claim the PaymentIntent atomically before verifying/paying.
+  if (!(await claimOnce(`pi-${paymentIntentId}`))) {
+    const raced = (await listWalkinPayments()).find((w) => w.paymentIntentId === paymentIntentId);
+    if (raced) {
+      return NextResponse.json({ ok: true, amount: raced.amount, payoutFailed: raced.payoutFailed ?? false });
+    }
+    return NextResponse.json({ error: 'This payment is already being processed.' }, { status: 409 });
+  }
 
   let amount: number;
   let payerName: string | null = null;
   try {
     const pi = await getStripe().paymentIntents.retrieve(paymentIntentId);
     if (pi.status !== 'succeeded') {
+      // Release the claim so a later confirm (after the payment lands) works.
+      await releaseClaim(`pi-${paymentIntentId}`);
       return NextResponse.json({ error: 'Payment has not completed.' }, { status: 402 });
     }
     if (pi.metadata?.kind !== 'walkin' || pi.metadata?.barberId !== barberId) {
+      await releaseClaim(`pi-${paymentIntentId}`);
       return NextResponse.json({ error: 'Payment does not match this barber.' }, { status: 400 });
     }
     amount = pi.amount / 100;
     payerName = pi.metadata?.payerName ? String(pi.metadata.payerName).slice(0, 60) : null;
   } catch (e) {
+    await releaseClaim(`pi-${paymentIntentId}`);
     console.error('Walk-in payment verify failed', e);
     return NextResponse.json({ error: 'Could not verify the payment.' }, { status: 502 });
   }
 
   const barbers = await getBarbers();
   const barber = barbers.find((b) => b.id === barberId);
-  if (!barber) return NextResponse.json({ error: 'Barber not found.' }, { status: 404 });
+  if (!barber) {
+    await releaseClaim(`pi-${paymentIntentId}`);
+    return NextResponse.json({ error: 'Barber not found.' }, { status: 404 });
+  }
 
   const payment: WalkinPayment = {
     id: newId(),
@@ -67,7 +84,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ barberI
   try {
     const { payoutToBarber } = await import('@/lib/payouts');
     const result = await payoutToBarber(barberId, amount, {
-      idempotencyKey: `payout-walkin-${payment.id}`,
+      // Deterministic per payment (audit M4): the retry sweep derives the
+      // same key from the PaymentIntent id.
+      idempotencyKey: `payout-walkin-pi-${paymentIntentId}`,
       description: `MRC Barbershops — walk-in payment ($${amount.toFixed(2)})`,
       metadata: { kind: 'walkin_payout', walkinId: payment.id },
     });

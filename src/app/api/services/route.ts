@@ -12,7 +12,8 @@ export async function GET(req: Request) {
   let salonId = 'mrc';
   if (salonParam) {
     const salon = await resolveSalon(salonParam);
-    if (!salon) return NextResponse.json({ error: 'Salon not found.' }, { status: 404 });
+    // Audit M5 (2026-10-29): a suspended salon does not resolve publicly.
+    if (!salon || salon.status !== 'active') return NextResponse.json({ error: 'Salon not found.' }, { status: 404 });
     salonId = salon.id;
   }
   const services = (await getServices()).filter((s) => s.active && inSalon(s, salonId));

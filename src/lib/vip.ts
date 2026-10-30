@@ -92,36 +92,48 @@ function toHHMM(mins: number): string {
 }
 
 /**
- * Slot starts (HH:MM) that a booking makes unavailable: its own start, plus
- * — for a VIP home visit — every 30-min start inside its 2-hour block.
+ * Slot starts (HH:MM) that a booking makes unavailable: every 30-min start
+ * inside its occupied interval — [start, start+2h) for a VIP home visit,
+ * [start, start+service duration) for a normal booking (audit M7,
+ * 2026-10-22: service durations were previously ignored, so a 60-minute
+ * service only blocked its start slot). Without a duration the booking
+ * blocks only its own start (legacy behavior).
  */
-export function blockedStartsFor(b: Pick<Booking, 'time' | 'houseCall'>): string[] {
-  if (!b.houseCall) return [b.time];
+export function blockedStartsFor(
+  b: Pick<Booking, 'time' | 'houseCall'>,
+  durationMin?: number
+): string[] {
+  const span = b.houseCall ? VIP_BLOCK_MINUTES : Math.max(30, durationMin ?? 0);
+  if (span <= 30) return [b.time];
   const start = toMin(b.time);
   const out: string[] = [];
-  for (let m = start; m < start + VIP_BLOCK_MINUTES; m += 30) out.push(toHHMM(m));
+  for (let m = start; m < start + span; m += 30) out.push(toHHMM(m));
   return out;
 }
 
 /**
- * Does a new booking at `time` clash with an existing one? A VIP visit
- * occupies [start, start+2h); a normal booking occupies its start slot.
- * Intervals are half-open, and a normal booking still can't share another
- * booking's exact start (handled by the caller's exact-match check too).
+ * Does a new booking at `time` clash with an existing one? Intervals are
+ * half-open: a VIP visit occupies [start, start+2h); a normal booking
+ * occupies [start, start+duration) where the duration comes from
+ * `durationOf` (the service's durationMin) when provided — audit M7.
+ * Without `durationOf`, a normal booking occupies only its start minute
+ * (legacy behavior; exact-start collisions are also checked by callers).
  */
 export function vipClash(
-  bookings: Pick<Booking, 'barberId' | 'date' | 'time' | 'status' | 'houseCall'>[],
+  bookings: Pick<Booking, 'barberId' | 'date' | 'time' | 'status' | 'houseCall' | 'serviceId'>[],
   barberId: string,
   date: string,
   time: string,
-  newIsVip: boolean
+  newIsVip: boolean,
+  newDurationMin?: number,
+  durationOf?: (b: Pick<Booking, 'houseCall' | 'serviceId'>) => number
 ): boolean {
   const ns = toMin(time);
-  const ne = ns + (newIsVip ? VIP_BLOCK_MINUTES : 1);
+  const ne = ns + (newIsVip ? VIP_BLOCK_MINUTES : Math.max(1, newDurationMin ?? 1));
   return bookings.some((b) => {
     if (b.barberId !== barberId || b.date !== date || b.status !== 'booked') return false;
     const s = toMin(b.time);
-    const e = s + (b.houseCall ? VIP_BLOCK_MINUTES : 1);
+    const e = s + (b.houseCall ? VIP_BLOCK_MINUTES : Math.max(1, durationOf?.(b) ?? 1));
     return ns < e && s < ne;
   });
 }

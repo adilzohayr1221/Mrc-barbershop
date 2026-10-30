@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
-import { requireBarber, requireOwner } from '@/lib/auth';
+
+import { requireActiveBarber, requireActiveOwner } from "@/lib/guard";
 import { getBarbers, getTeamChat } from '@/lib/store';
+import { sessionSalonId } from '@/lib/auth';
+import { barberSalonId } from '@/lib/salonScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,12 +11,16 @@ export const dynamic = 'force-dynamic';
 // Barbers: messages newer than their lastRead. Owner: messages newer than
 // ownerLastRead (ghost read position — never exposed to barbers).
 export async function GET(req: Request) {
-  const barberSession = requireBarber(req);
-  const ownerSession = barberSession ? null : requireOwner(req);
+  const barberSession = await requireActiveBarber(req);
+  const ownerSession = barberSession ? null : await requireActiveOwner(req);
   if ((!barberSession || !barberSession.barberId) && !ownerSession) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const [barbers, doc] = await Promise.all([getBarbers(), getTeamChat()]);
+  // Audit L2 (2026-10-29): the unread count must read the caller's OWN
+  // salon thread — the unscoped call always read the platform salon's doc,
+  // so salon barbers saw platform unread counts (and vice versa).
+  const salonId = ownerSession ? sessionSalonId(ownerSession) : await barberSalonId(barberSession!);
+  const [barbers, doc] = await Promise.all([getBarbers(), getTeamChat(salonId)]);
   const d = doc ?? { messages: [], lastRead: {} as Record<string, string>, ownerLastRead: null as string | null };
 
   if (ownerSession) {

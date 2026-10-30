@@ -27,9 +27,13 @@ interface MembershipStatus {
   memberName: string;
   weeks: Week[];
   currentWeekAvailable: boolean;
-  planKind?: 'standard' | 'custom';
+  planKind?: 'standard' | 'custom' | 'yearly';
   planName?: string;
   planPrice?: number;
+  planInterval?: 'month' | 'year';
+  totalWeeks?: number;
+  guestSlot?: { state: 'used' | 'available' | 'expired' | 'upcoming'; weekIndex: number; label: string; start: string; end: string } | null;
+  guestWeeksUsed?: number;
   weeklyServices?: { serviceId: string; name: string; price: number }[] | null;
 }
 
@@ -39,6 +43,10 @@ interface StatusResp {
   membership: MembershipStatus | null;
   plan: { price: number; haircuts: number };
 }
+
+// Mirrors YEARLY_PRICE_USD in lib/membership.ts (server-only module —
+// the price itself is enforced by the Stripe price at checkout).
+const YEARLY_PRICE_USD = 1300;
 
 function fmtDay(iso: string) {
   const d = new Date(iso);
@@ -86,7 +94,7 @@ function MembershipWallet({
             {m.status === 'active' ? (m.cancelAtPeriodEnd ? t('offers.endsSoon') : t('offers.active')) : t('offers.pastDueShort')}
           </span>
         </div>
-        <p className="text-[13px] text-neutral-300 mt-1">{m.memberName}{m.planPrice ? ` · $${m.planPrice}${t('offers.perMo')}` : ''}</p>
+        <p className="text-[13px] text-neutral-300 mt-1">{m.memberName}{m.planPrice ? ` · $${m.planPrice}${m.planInterval === 'year' ? t('offers.perYr') : t('offers.perMo')}` : ''}</p>
         {m.planKind === 'custom' && m.weeklyServices && (
           <div className="grid grid-cols-2 gap-1.5 mt-3">
             {m.weeklyServices.map((w, i) => (
@@ -96,16 +104,41 @@ function MembershipWallet({
             ))}
           </div>
         )}
-        <div className="flex justify-between mt-5 mb-1">
-          {m.weeks.map((w) => <WeekDot key={w.index} week={w} />)}
-        </div>
+        {m.weeks.length > 12 ? (
+          // Yearly plan: 48 week dots don't fit a wallet card — show progress.
+          <div className="mt-5 mb-1">
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full bg-gold rounded-full"
+                style={{ width: `${Math.round((m.weeks.filter((w) => w.state === 'used').length / m.weeks.length) * 100)}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-neutral-400 mt-2 font-semibold">
+              {t('offers.weeksUsedOf')
+                .replace('{used}', String(m.weeks.filter((w) => w.state === 'used').length))
+                .replace('{total}', String(m.weeks.length))}
+            </p>
+          </div>
+        ) : (
+          <div className="flex justify-between mt-5 mb-1">
+            {m.weeks.map((w) => <WeekDot key={w.index} week={w} />)}
+          </div>
+        )}
         <p className="text-[12px] text-neutral-400 mt-3 leading-relaxed">
           {m.currentWeekAvailable
             ? `✓ ${t('offers.thisWeekAvailable').replace('{service}', weekService ?? '1 haircut')}`
             : m.planKind === 'custom' ? t('offers.weekUsedGoneCustom') : t('offers.weekUsedGone')}
           {' · '}{t('offers.renews').replace('{date}', fmtDay(m.currentPeriodEnd))}
         </p>
-        <p className="text-[12px] text-gold font-semibold mt-1.5">{t('offers.stayFresh')}</p>
+        {m.planKind === 'yearly' && m.guestSlot && (
+          <p className="text-[12px] text-neutral-300 mt-1.5 leading-relaxed">
+            {m.guestSlot.state === 'available' ? `🎁 ${t('offers.guestSlotAvailable')}` : m.guestSlot.state === 'used' ? `🎁 ${t('offers.guestSlotUsed')}` : ''}
+            {(m.guestWeeksUsed ?? 0) > 0 && (
+              <span className="text-neutral-500"> · {t('offers.guestUsedOf').replace('{used}', String(m.guestWeeksUsed))}</span>
+            )}
+          </p>
+        )}
+        <p className="text-[12px] text-gold font-semibold mt-1.5">{m.planKind === 'yearly' ? t('offers.stayFreshYear') : t('offers.stayFresh')}</p>
       </div>
 
       {m.status === 'active' && m.currentWeekAvailable ? (
@@ -389,6 +422,25 @@ function OffersInner() {
     }
   }
 
+  async function subscribeYearly() {
+    // Same account rule as the monthly plan: guests log in first.
+    if (!token) { window.location.href = '/customer/login?next=/customer/offers'; return; }
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch('/api/memberships/subscribe-yearly', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t('offers.couldNotStartSub'));
+      window.location.href = d.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('offers.couldNotStartSub'));
+      setBusy(false);
+    }
+  }
+
   async function cancelPlan(membershipId: string, action: 'cancel' | 'resume') {
     if (!token) return;
     setBusy(true);
@@ -505,6 +557,48 @@ function OffersInner() {
 
         {/* Mix & Match plan — same weekly mechanics, customer picks the services. */}
         {token && <MixMatchBuilder token={token} onError={setError} hasDiscount={hasDiscount} />}
+
+        {/* Yearly plan — same weekly membership, billed once a year, plus a
+            free guest cut every week. */}
+        <div className="relative overflow-hidden rounded-3xl p-6 border border-gold/40 shadow-[0_10px_30px_rgba(168,130,31,0.15)] mt-6"
+          style={{ background: 'linear-gradient(135deg, #1c1a15 0%, #0d0d0d 100%)' }}>
+          <p className="text-[11px] font-bold tracking-[0.25em] uppercase text-gold">{t('offers.mixMatchNew')}</p>
+          <h2 className="font-extrabold text-[24px] mt-2 leading-tight text-white">{t('offers.yearlyPlan')}</h2>
+          <p className="text-gold font-semibold text-[15px] mt-1">{t('offers.yearlyTagline')}</p>
+          <span className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full border border-gold/60 bg-gold/10 text-gold text-[12px] font-extrabold tracking-[0.25em]">∞ {t('offers.unlimitedBadge')}</span>
+          <p className="mt-2 text-[15px] text-neutral-300 leading-relaxed">
+            <b className="text-gold text-[22px]">{t('offers.unlimitedHaircuts')}</b> for <b className="text-gold text-[22px]">${disc(YEARLY_PRICE_USD)}</b>{t('offers.perYear')}
+            <span className="text-neutral-500 line-through text-[15px]"> {t('offers.yearlyInsteadOf')}</span>
+            {hasDiscount && <span className="block text-[12px] font-bold text-green-400 mt-1">🎓 {t('offers.discountBadge')}</span>}
+          </p>
+          <div className="mt-4 grid gap-2 text-[13.5px] text-neutral-300">
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkOneHaircut')}</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.guestPerk')}</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkChargedYearly')}</p>
+            <p className="flex gap-2"><span className="text-gold">✓</span> {t('offers.checkSkipWeek')}</p>
+          </div>
+        </div>
+
+        <div className="card p-5 mt-4">
+          <h3 className="font-extrabold text-[16px]">{t('offers.howItWorks')}</h3>
+          <ol className="mt-3 grid gap-2.5 text-[14px] text-neutral-600 leading-relaxed list-none">
+            <li><b className="text-gold">1.</b> {t('offers.yearlyStep1').replace('${price}', String(disc(YEARLY_PRICE_USD)))}</li>
+            <li><b className="text-gold">2.</b> {t('offers.step2')}</li>
+            <li><b className="text-gold">3.</b> {t('offers.step3')}</li>
+            <li><b className="text-gold">4.</b> {t('offers.step4')}</li>
+          </ol>
+        </div>
+
+        <button
+          onClick={subscribeYearly}
+          disabled={busy}
+          className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
+        >
+          {busy ? t('offers.starting') : t('offers.subscribeYearly').replace('${price}', String(YEARLY_PRICE_USD))}
+        </button>
+        <p className="text-[12px] text-neutral-400 text-center mt-2.5 leading-relaxed">
+          {t('offers.renewsYearly')}
+        </p>
       </div>
 
       {/* Gift a haircut promo */}

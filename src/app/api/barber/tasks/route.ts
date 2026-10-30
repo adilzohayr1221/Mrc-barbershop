@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
+import { signPhotoUrl } from '@/lib/auth';
 import { listTasks, inSalon } from '@/lib/store';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
 
 export const dynamic = 'force-dynamic';
 
 // Barber: my assigned tasks (with their status and my proof photo).
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
         description: t.description || '',
         createdAt: t.createdAt,
         status: a.status,
-        photoUrl: a.photoPath ? `/api/photos/${encodeURIComponent(a.photoPath.split('/').pop() || '')}` : null,
+        photoUrl: a.photoPath ? signPhotoUrl(a.photoPath.split('/').pop() || '') : null,
         submittedAt: a.submittedAt || null,
         approvedAt: a.approvedAt || null,
       };

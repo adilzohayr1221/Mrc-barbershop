@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { listBookings, getBarbers, listGifts, listTips, listWalkinPayments } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { summarizeEarnings, countHaircuts, addPeriods, addCounts, summarizeGiftEarnings, countGiftHaircuts, summarizeTipEarnings, summarizeWalkinEarnings, shopToday } from '@/lib/earnings';
+import { yearlyMembershipIdsIn } from '@/lib/membership';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,9 +14,10 @@ export const dynamic = 'force-dynamic';
 // Redeemed gift haircuts count toward the redeeming barber's earnings and haircut counts.
 // Customer tips count toward the tipped barber's earnings.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [bookings, barbers, gifts, tips, walkins] = await Promise.all([listBookings(), getBarbers(), listGifts(), listTips(), listWalkinPayments()]);
   const redeemedGifts = gifts.filter((g) => g.status === 'redeemed');
+  const yearlyIds = await yearlyMembershipIdsIn(bookings);
   const perBarber = barbers
     .filter((b) => b.active)
     .map((b) => {
@@ -25,11 +28,11 @@ export async function GET(req: Request) {
       return {
         id: b.id,
         name: b.name,
-        earnings: addPeriods(addPeriods(addPeriods(summarizeEarnings(mine, shopToday(), true), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)), summarizeWalkinEarnings(mineWalkins)),
+        earnings: addPeriods(addPeriods(addPeriods(summarizeEarnings(mine, shopToday(), true, yearlyIds), summarizeGiftEarnings(mineGifts)), summarizeTipEarnings(mineTips)), summarizeWalkinEarnings(mineWalkins)),
         haircuts: addCounts(countHaircuts(mine), countGiftHaircuts(mineGifts)),
       };
     })
     .sort((a, b) => b.earnings.month - a.earnings.month);
-  const totals = addPeriods(addPeriods(addPeriods(summarizeEarnings(bookings), summarizeGiftEarnings(redeemedGifts)), summarizeTipEarnings(tips)), summarizeWalkinEarnings(walkins));
+  const totals = addPeriods(addPeriods(addPeriods(summarizeEarnings(bookings, shopToday(), false, yearlyIds), summarizeGiftEarnings(redeemedGifts)), summarizeTipEarnings(tips)), summarizeWalkinEarnings(walkins));
   return NextResponse.json({ ok: true, totals, perBarber });
 }

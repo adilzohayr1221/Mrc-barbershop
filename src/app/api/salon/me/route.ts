@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSalon, getBarbers, listBookings, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 import { summarizeEarnings, shopToday } from '@/lib/earnings';
+import { yearlyMembershipIdsIn } from '@/lib/membership';
 
 export const dynamic = 'force-dynamic';
 
 // Salon-owner: my salon's profile + quick stats.
 export async function GET(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const salon = await getSalon(salonId);
@@ -20,7 +22,8 @@ export async function GET(req: Request) {
   const upcomingBookings = myBookings.filter(
     (b) => b.status === 'booked' && b.date >= today
   ).length;
-  const monthEarnings = summarizeEarnings(myBookings).month;
+  const yearlyIds = await yearlyMembershipIdsIn(myBookings);
+  const monthEarnings = summarizeEarnings(myBookings, today, false, yearlyIds).month;
 
   return NextResponse.json({
     salon,

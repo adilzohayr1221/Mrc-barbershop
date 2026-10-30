@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { getBarbers, saveBarbers } from '@/lib/store';
-import { requireOwner, hashPassword } from '@/lib/auth';
+import { hashPassword } from "@/lib/auth";
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ function tempPassword(): string {
 // The temp password is returned ONCE — the owner shares it with the barber,
 // who should then change it from their own account.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   if (!/^[a-zA-Z0-9-]+$/.test(id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -30,6 +31,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const temp = tempPassword();
   barber.passwordHash = hashPassword(temp);
+  // Audit H5: a password reset kills every outstanding session.
+  barber.authVersion = (barber.authVersion ?? 0) + 1;
   await saveBarbers(barbers);
   return NextResponse.json({ ok: true, tempPassword: temp, email: barber.email, name: barber.name });
 }

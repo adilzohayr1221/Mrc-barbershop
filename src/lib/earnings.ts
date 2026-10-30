@@ -3,13 +3,50 @@ import { VIP_BARBER_PAYOUT_USD, vipPeopleOf } from './vip';
 
 // Money attributed to one booking for earnings reports.
 // - Deposit/remainder payments: what was actually collected (amountPaid).
-// - Membership haircuts: the plan's per-haircut value ($120 / 4).
+// - Membership haircuts: the plan's per-haircut value ($120 / 4 = $30 for
+//   monthly-family plans; $25 for yearly-plan redemptions — member and
+//   guest — matching what those redemptions actually pay the barber).
 // - Cancelled/refunded: never counted. No-shows keep the deposit, so they count.
+// - Barber view only: once the barber completes a haircut (proof photo), its
+//   full agreed price counts as earned immediately — the barber watches this
+//   card all day, and the unpaid remainder is tracked by the Collect chips,
+//   not by hiding the earned value until the money lands. Payouts are a
+//   separate engine (lib/payouts) and stay strictly on collected amounts.
 export const PLAN_HAIRCUT_VALUE_USD = 30;
 
-export function earningOf(b: Booking, forBarber = false): number {
+/** Per-haircut value attributed to a YEARLY-plan redemption (the member's
+ *  own cut and the guest cut alike): the yearly plan pays the barber $25
+ *  per redemption (YEARLY_PAYOUT_USD in lib/membership), so earnings
+ *  reports show $25 for those — never the monthly plan's $30. Kept as a
+ *  local constant (not imported from lib/membership) so this module stays
+ *  free of store/Stripe imports for its client-side consumers. */
+export const YEARLY_HAIRCUT_VALUE_USD = 25;
+
+/** Earnings value of one redeemed plan booking. Yearly-plan redemptions
+ *  (member AND guest) attribute at $25; every other plan keeps the flat
+ *  monthly value — including Mix & Match, whose attribution has always
+ *  been this flat $30 (its per-plan payout math lives in lib/payouts and
+ *  is deliberately not mirrored in this display value).
+ *  A booking counts as yearly when its membership id is in
+ *  `yearlyMembershipIds` (resolved by the caller via yearlyMembershipIdsIn
+ *  in lib/membership), or when it is a guest booking — guest cuts exist
+ *  only on yearly plans. */
+export function planHaircutValueOf(b: Booking, yearlyMembershipIds?: ReadonlySet<string>): number {
+  if (b.membershipGuest === true) return YEARLY_HAIRCUT_VALUE_USD;
+  if (b.membershipId && yearlyMembershipIds?.has(b.membershipId)) return YEARLY_HAIRCUT_VALUE_USD;
+  return PLAN_HAIRCUT_VALUE_USD;
+}
+
+export function earningOf(b: Booking, forBarber = false, yearlyMembershipIds?: ReadonlySet<string>): number {
   if (b.status === 'cancelled') return 0;
   if (b.paymentStatus === 'refunded') return 0;
+  if (forBarber && b.completedAt) {
+    if (b.houseCall) return VIP_BARBER_PAYOUT_USD * vipPeopleOf(b);
+    if (b.paymentStatus === 'membership_redeemed') return planHaircutValueOf(b, yearlyMembershipIds);
+    const paidV = b.paymentStatus === 'paid' || b.paymentStatus === 'paid_in_full' ? (b.amountPaid ?? 0) : 0;
+    const full = b.servicePrice ?? paidV;
+    return Math.round(Math.max(paidV, full) * 100) / 100;
+  }
   if (b.paymentStatus === 'paid' || b.paymentStatus === 'paid_in_full') {
     const v = b.amountPaid ?? 0;
     if (v <= 0) return 0;
@@ -19,7 +56,7 @@ export function earningOf(b: Booking, forBarber = false): number {
     if (forBarber && b.houseCall) return Math.min(VIP_BARBER_PAYOUT_USD * vipPeopleOf(b), Math.round(v * 100) / 100);
     return Math.round(v * 100) / 100;
   }
-  if (b.paymentStatus === 'membership_redeemed') return PLAN_HAIRCUT_VALUE_USD;
+  if (b.paymentStatus === 'membership_redeemed') return planHaircutValueOf(b, yearlyMembershipIds);
   return 0;
 }
 
@@ -52,6 +89,18 @@ export function shopNowTime(): string {
   return `${hh}:${mm}`;
 }
 
+/** Has this booking's appointment start arrived (shop-local wall clock)?
+ *  Used to gate payouts (audit M2/H3, 2026-10-22): a booking whose start is
+ *  still in the future must not pay out yet — a same-day Done tap on a
+ *  future VIP visit would otherwise pay the barber for a visit that can
+ *  still be cancelled with a full refund. */
+export function bookingStarted(b: Pick<Booking, 'date' | 'time'>): boolean {
+  const today = shopToday();
+  if (b.date < today) return true;
+  if (b.date > today) return false;
+  return b.time <= shopNowTime();
+}
+
 export function mondayOf(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d, 12));
@@ -61,14 +110,14 @@ export function mondayOf(iso: string): string {
 }
 
 /** Sum earnings by booking date: today, this calendar week (Mon–Sun), this month. */
-export function summarizeEarnings(bookings: Booking[], today = shopToday(), forBarber = false): PeriodTotals {
+export function summarizeEarnings(bookings: Booking[], today = shopToday(), forBarber = false, yearlyMembershipIds?: ReadonlySet<string>): PeriodTotals {
   const weekStart = mondayOf(today);
   const monthStart = today.slice(0, 7) + '-01';
   let day = 0;
   let week = 0;
   let month = 0;
   for (const b of bookings) {
-    const v = earningOf(b, forBarber);
+    const v = earningOf(b, forBarber, yearlyMembershipIds);
     if (v <= 0) continue;
     const bd = b.date;
     if (bd < monthStart) continue;
@@ -85,13 +134,18 @@ export function fmtUSD(n: number): string {
 }
 
 /** A haircut counts as done when the appointment wasn't cancelled/no-show and
- *  either its day already passed or it was paid/redeemed (money moved). */
+ *  the barber completed it (proof photo), its day already passed, or it was
+ *  paid/redeemed (money moved). */
 export function isHaircutDone(b: Booking, today = shopToday()): boolean {
   if (b.status !== 'booked') return false;
+  // The barber marked it done — completion is server-gated on the
+  // proof-of-completion photo, so the haircut happened and counts
+  // immediately, the same day, before any Collect step.
+  if (b.completedAt) return true;
   if (b.date < today) return true;
   // A VIP home visit is paid in full at booking time — that alone does not
   // make it done. It counts once the barber completes it (proof photo).
-  if (b.houseCall) return !!b.completedAt;
+  if (b.houseCall) return false;
   return b.paymentStatus === 'paid_in_full' || b.paymentStatus === 'membership_redeemed';
 }
 

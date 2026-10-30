@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getBarbers, saveBarbers, getBranches, newId, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 import type { Barber } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 function safeBarber(b: Barber) {
-  const { passwordHash: _ph, ...rest } = b;
+  // Audit L11 (2026-10-29): the salon owner never needs his barbers'
+  // Stripe account ids either — strip them with the password hash.
+  const { passwordHash: _ph, stripeAccountId: _sa, ...rest } = b;
   return {
     ...rest,
     photoUrl: b.photoPath ? `/api/photos/${encodeURIComponent(b.photoPath.split('/').pop() || '')}` : null,
@@ -16,7 +19,7 @@ function safeBarber(b: Barber) {
 // Salon-owner: list barbers of HIS salon (includes inactive — they carry the
 // active flag). Never includes password hashes.
 export async function GET(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const barbers = (await getBarbers()).filter((b) => inSalon(b, salonId));
@@ -27,7 +30,7 @@ export async function GET(req: Request) {
 // the platform owner must approve before the barber goes live. The barber
 // sets his own password later via the existing barber-signup flow.
 export async function POST(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const body = await req.json().catch(() => null);

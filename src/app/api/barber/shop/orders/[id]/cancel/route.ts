@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
 import { getShopOrder, saveShopOrder, getShopDebt, inSalon } from '@/lib/store';
 import { getStripe } from '@/lib/stripe';
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // Barber: cancel his own supply order — only while it is still `pending`
 // (the owner hasn't handed the item over yet). Card payments are refunded.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const salonId = await barberSalonId(session);
@@ -30,7 +30,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let refunded = false;
   if (order.payMethod === 'card' && order.paymentIntentId) {
     try {
-      await getStripe().refunds.create({ payment_intent: order.paymentIntentId });
+      // Audit M1 (2026-10-22): idempotency-keyed so a retried cancel can
+      // never refund twice.
+      await getStripe().refunds.create(
+        { payment_intent: order.paymentIntentId },
+        { idempotencyKey: `refund-shop-order-${order.id}` }
+      );
       refunded = true;
     } catch (e) {
       console.error('[shop] refund failed', order.id, e);

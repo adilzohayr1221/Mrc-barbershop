@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
 import {
   getBarbers,
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 // Barber: my supply orders + outstanding debt (cancelled orders are hidden).
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const orders = (await listShopOrdersByBarber(session.barberId)).filter((o) => o.status !== 'cancelled');
   const debt = await getShopDebt(session.barberId);
@@ -33,7 +33,7 @@ export async function GET(req: Request) {
 // The order starts as `pending`: the barber can cancel it until the owner
 // confirms the handover.
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const productId = body?.productId;
@@ -74,6 +74,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not verify the card payment.' }, { status: 502 });
     }
     if (intent.status !== 'succeeded' || intent.amount !== toCents(total) || intent.currency !== 'usd') {
+      return NextResponse.json({ error: 'Card payment did not complete for this order.' }, { status: 402 });
+    }
+    // Audit H2 (2026-10-29): amount/status alone let ANY successful intent
+    // of the same total be spent here (e.g. a walk-in payment). The intent
+    // must be one the shop-intent route stamped for THIS barber, product
+    // and quantity.
+    const md = intent.metadata ?? {};
+    if (
+      md.kind !== 'shop_order' ||
+      md.barberId !== session.barberId ||
+      md.productId !== productId ||
+      Number(md.quantity) !== quantity
+    ) {
       return NextResponse.json({ error: 'Card payment did not complete for this order.' }, { status: 402 });
     }
     paymentIntentId = pi;

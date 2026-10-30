@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listBookings, getBooking, getBarbers, getServices, getBranches, getSalon, salonOf } from '@/lib/store';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { remainingFor } from '@/lib/stripe';
 import { PLATFORM_SALON_ID } from '@/lib/types';
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // A direct getBooking() read of a new path is consistent immediately, so we
 // merge that one booking in when it belongs to this customer.
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -78,6 +79,9 @@ export async function GET(req: Request) {
         depositPaid: b.amountPaid ?? null,
         remaining: isMembership ? 0 : price != null ? remainingFor(price, b.amountPaid) : null,
         hasSavedCard: !!(b.stripeCustomerId && b.stripePaymentMethodId),
+        // True when the automatic charge of the remaining balance already
+        // failed once — the customer then sees the payment-code fallback.
+        balanceChargeFailed: b.paymentStatus === 'paid' && !!b.balanceChargeError,
         membership: isMembership ? (b.paymentStatus === 'membership_redeemed' ? 'redeemed' : 'pending') : null,
       };
     }),

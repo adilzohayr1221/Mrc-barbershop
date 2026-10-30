@@ -30,6 +30,22 @@ function fmtMiles(mi: number, t: (key: string) => string): string {
   return mi < 0.1 ? t('home.nearby') : mi < 10 ? t('home.miles').replace('{n}', mi.toFixed(1)) : t('home.miles').replace('{n}', String(Math.round(mi)));
 }
 
+// Small "tap here" hint pinned to the top corner of the subscription
+// banners below: a bare four-point sparkle — the same ✦ mark the app
+// draws beside its "New" labels (see SparkleIcon in AiAssistant) — in the
+// page's own cream tone, so customers can tell the banner is pressable
+// and not just an ad. No badge, no disc behind it. Purely decorative —
+// the banner link itself stays exactly as it was.
+function TapHintBadge() {
+  return (
+    <span aria-hidden="true" className="tap-hint-spark">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 1.5 14.3 9.7 22.5 12 14.3 14.3 12 22.5 9.7 14.3 1.5 12 9.7 9.7Z" />
+      </svg>
+    </span>
+  );
+}
+
 export default function CustomerHome() {
   const { checked } = useCustomerSession();
   const { t } = useLang();
@@ -115,9 +131,10 @@ export default function CustomerHome() {
           <Link
             href="/customer/vip"
             aria-label="VIP home visits"
-            className="shrink-0 w-[104px] h-[104px] rounded-2xl border border-gold/50 shadow-[0_10px_30px_rgba(0,0,0,0.35)] flex flex-col items-center justify-center text-center px-1.5 active:scale-95 transition-transform"
+            className="relative shrink-0 w-[104px] h-[104px] rounded-2xl border border-gold/50 shadow-[0_10px_30px_rgba(0,0,0,0.35)] flex flex-col items-center justify-center text-center px-1.5 active:scale-95 transition-transform"
             style={{ background: 'linear-gradient(140deg, #1c1a16 0%, #0e0d0b 100%)' }}
           >
+            <TapHintBadge />
             <span className="text-[15px] leading-none">🏠</span>
             <span className="gold-text font-black text-[26px] leading-none tracking-wide mt-1">VIP</span>
             <span className="text-[9.5px] font-semibold text-neutral-300 leading-tight mt-1.5">{t('home.vipTag')}</span>
@@ -130,6 +147,7 @@ export default function CustomerHome() {
           className="block rounded-2xl p-4 mb-4 relative overflow-hidden border border-gold/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:scale-[0.99] transition-transform"
           style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}
         >
+          <TapHintBadge />
           <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">🔥 {t('home.specialOffer')}</p>
           <p className="font-extrabold text-[17px] mt-1 text-white">{t('home.monthlyDeal')}</p>
           <p className="text-[13px] text-neutral-400 mt-0.5">{t('home.onePerWeek')} <span className="text-gold font-bold">→</span></p>
@@ -140,6 +158,7 @@ export default function CustomerHome() {
           className="block rounded-2xl p-4 mb-4 relative overflow-hidden border border-gold/40 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:scale-[0.99] transition-transform"
           style={{ background: 'linear-gradient(120deg, #1c1a16 0%, #0e0d0b 100%)' }}
         >
+          <TapHintBadge />
           <p className="text-[10px] font-bold tracking-[0.25em] uppercase text-gold">✨ {t('home.new')}</p>
           <p className="font-extrabold text-[17px] mt-1 text-white">{t('home.mixMatch')}</p>
           <p className="text-[13px] text-neutral-400 mt-0.5">{t('home.mixMatchDesc')} <span className="text-gold font-bold">→</span></p>
@@ -160,6 +179,7 @@ export default function CustomerHome() {
                 onSalonSelect={(slug) => {
                   window.location.href = `/customer?salon=${encodeURIComponent(slug)}`;
                 }}
+                onUserLocated={({ lat, lng }) => setUserLoc({ lat, lng })}
               />
             </div>
 

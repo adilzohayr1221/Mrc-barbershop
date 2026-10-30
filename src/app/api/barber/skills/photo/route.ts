@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { getSkillVerificationByBarberSkill, saveSkillVerification } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 // DELETE /api/barber/skills/photo — remove one photo from a draft/rejected
 // skill collection. Body: { skill, photoUrl }.
 export async function DELETE(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const { skill, photoUrl } = body ?? {};
@@ -18,7 +18,8 @@ export async function DELETE(req: Request) {
   if (!v || (v.status !== 'draft' && v.status !== 'rejected')) {
     return NextResponse.json({ error: 'Cannot remove photos now.' }, { status: 409 });
   }
-  const name = decodeURIComponent(photoUrl.split('/').pop() || '');
+  // Signed photo URLs (audit H7) carry a ?s= query — strip it before matching.
+  const name = decodeURIComponent((photoUrl.split('/').pop() || '').split('?')[0]);
   const before = v.photoPaths.length;
   v.photoPaths = v.photoPaths.filter((p) => !p.endsWith(name));
   if (v.photoPaths.length === before) {

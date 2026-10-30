@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getServices, saveServices, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
 // Salon-owner: update one of HIS salon's services.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const { id } = await params;
@@ -39,7 +40,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 // Salon-owner: delete one of HIS salon's services.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const { id } = await params;

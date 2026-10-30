@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getWorkPhoto, saveWorkPhoto, deleteWorkPhoto } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // POST /api/owner/photos/[id] → { action: 'approve' | 'reject' }
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const action = body?.action;
   if (action !== 'approve' && action !== 'reject') {

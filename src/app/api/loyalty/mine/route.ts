@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { getCustomerLoyalty, getLoyaltyReward } from '@/lib/store';
 import { LOYALTY_PAID_FOR_FREE } from '@/lib/loyalty';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // Customer's loyalty progress: paid haircuts toward the one-time free 5th
 // haircut, plus the active MRC5 reward QR when earned.
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

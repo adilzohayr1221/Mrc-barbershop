@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getBarbers, saveBarbers, savePhoto, getBranches, getSalon } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+import { getBarbers, saveBarbers, savePhoto, getBranches, getSalon, sniffImageType } from '@/lib/store';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { PLATFORM_SALON_ID } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: update a barber (name, skills, branches, photo, active, approved).
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const contentType = req.headers.get('content-type') || '';
   let name: string | undefined, skills: string[] | undefined, branchIds: string[] | undefined;
@@ -43,7 +44,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const barber = barbers.find((b) => b.id === id);
   if (!barber) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  if (approved !== undefined) barber.approved = approved;
+  if (approved !== undefined) {
+    // Audit H5: un-approving a barber kills his outstanding sessions.
+    if (approved === false && barber.approved !== false) {
+      barber.authVersion = (barber.authVersion ?? 0) + 1;
+    }
+    barber.approved = approved;
+  }
 
   // Salon assignment (platform owner picks the salon when approving a barber).
   if (salonId !== undefined) {
@@ -68,8 +75,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     barber.branchIds = valid;
   }
   if (photoBuf) {
-    const ext = photoType.includes('png') ? 'png' : photoType.includes('webp') ? 'webp' : 'jpg';
-    barber.photoPath = await savePhoto(`${id}.${ext}`, photoBuf, photoType);
+    // Audit M13: store under the sniffed type, not the client-supplied one.
+    const sniffed = sniffImageType(photoBuf);
+    if (sniffed) barber.photoPath = await savePhoto(`${id}.${sniffed.ext}`, photoBuf, sniffed.mime);
   }
   await saveBarbers(barbers);
   return NextResponse.json({ barber });
@@ -78,7 +86,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 // Owner-only: soft-delete a barber (hidden from booking/login; records kept).
 // The barber's email login is wiped so the same email can register again later.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const barbers = await getBarbers();
   const barber = barbers.find((b) => b.id === id);
@@ -87,6 +95,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   barber.email = undefined;
   barber.passwordHash = undefined;
   barber.approved = false;
+  // Audit H5: kill every outstanding session immediately.
+  barber.authVersion = (barber.authVersion ?? 0) + 1;
   await saveBarbers(barbers);
   return NextResponse.json({ ok: true });
 }

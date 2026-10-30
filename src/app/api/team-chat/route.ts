@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireBarber, requireOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from "@/lib/auth";
+import { requireActiveBarber, requireActiveOwner } from "@/lib/guard";
 import { getBarbers, getTeamChat, saveTeamChat, newId, inSalon } from '@/lib/store';
 import { barberSalonId } from '@/lib/salonScope';
 import { sendPushToUser } from '@/lib/push';
@@ -25,9 +26,9 @@ type Actor = { kind: 'barber'; barberId: string; salonId: string } | { kind: 'ow
 // invisible — no presence, no read receipts visible to barbers, no push.
 // Each salon has its own thread: barbers only ever see their salon's chat.
 async function actorOf(req: Request): Promise<Actor | null> {
-  const b = requireBarber(req);
+  const b = await requireActiveBarber(req);
   if (b && b.barberId) return { kind: 'barber', barberId: b.barberId, salonId: await barberSalonId(b) };
-  const o = requireOwner(req);
+  const o = await requireActiveOwner(req);
   if (o) return { kind: 'owner', salonId: sessionSalonId(o) };
   return null;
 }

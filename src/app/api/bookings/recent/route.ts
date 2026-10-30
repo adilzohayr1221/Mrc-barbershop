@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { listBookings, getBarbers, getServices } from '@/lib/store';
 import { shopToday } from '@/lib/earnings';
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // so they can file a complaint about a haircut that already happened
 // (appointments vanish from "My appointments" 60 min after the start).
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // 14 days before shop-local today, as a YYYY-MM-DD string.
   const [ty, tm, td] = shopToday().split('-').map(Number);

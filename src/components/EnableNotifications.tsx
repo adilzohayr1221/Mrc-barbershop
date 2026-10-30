@@ -84,7 +84,8 @@ export function EnableNotifications({ getToken }: { getToken: () => string }) {
         await sub.unsubscribe();
         await fetch('/api/notifications/unsubscribe', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // Audit L6: the unsubscribe endpoint is authenticated now.
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
           body: JSON.stringify({ endpoint }),
         }).catch(() => {});
       }

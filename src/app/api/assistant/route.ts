@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServices, getBranches, getBarbers } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
+import { rateLimitExceeded, clientIp } from '@/lib/guard';
+import { shopToday } from '@/lib/earnings';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,29 +11,16 @@ export const dynamic = 'force-dynamic';
 // It may SUGGEST the best option when it genuinely fits the question — one
 // short suggestion per reply, never pushy, never forced into unrelated answers.
 
-// Light in-memory per-IP rate limit: 30 requests / 10 min (best-effort).
-const hits = new Map<string, number[]>();
+// Audit M12 (2026-10-29): abuse controls moved to the shared store limiter
+// (the in-memory map reset per instance), plus a GLOBAL daily request
+// budget so a distributed flood can't run up unbounded Gemini cost.
+// ASSISTANT_DAILY_BUDGET overrides the default (2000 requests/shop-day).
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_HITS = 30;
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const arr = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
-  if (arr.length >= MAX_HITS) {
-    hits.set(ip, arr);
-    return true;
-  }
-  arr.push(now);
-  hits.set(ip, arr);
-  // Best-effort cleanup so the map can't grow forever.
-  if (hits.size > 5000) {
-    for (const [k, v] of hits) {
-      if (v.length === 0 || now - v[v.length - 1] > WINDOW_MS) hits.delete(k);
-      if (hits.size <= 4000) break;
-    }
-  }
-  return false;
-}
+const DAILY_BUDGET = (() => {
+  const n = parseInt(process.env.ASSISTANT_DAILY_BUDGET || '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 2000;
+})();
 
 interface InMsg {
   role: 'user' | 'assistant';
@@ -70,14 +59,17 @@ function toGeminiContents(msgs: InMsg[]): { role: string; parts: { text: string 
 }
 
 export async function POST(req: Request) {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    req.headers.get('x-real-ip')?.trim() ||
-    'unknown';
-  if (rateLimited(ip)) {
+  const ip = clientIp(req);
+  if (await rateLimitExceeded(`assistant:${ip}`, MAX_HITS, WINDOW_MS)) {
     return NextResponse.json(
       { error: 'Too many messages — please wait a bit and try again, or call (443) 741-5820.' },
       { status: 429 }
+    );
+  }
+  if (await rateLimitExceeded(`assistant-global:${shopToday()}`, DAILY_BUDGET, 24 * 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: 'The assistant is having trouble right now. Please try again or call (443) 741-5820.' },
+      { status: 503 }
     );
   }
 
@@ -131,7 +123,7 @@ Barbers:
 ${barberLines.length ? barberLines.join('\n') : '- (none listed yet)'}
 
 Facts:
-- Booking takes a $5 deposit (capped at the service price); the rest is paid at the shop after the haircut when the barber scans your payment code.
+- Booking takes a $5 deposit (capped at the service price); the rest is charged automatically to the same card when the haircut is done — the customer pays nothing at the shop.
 - Monthly Haircut Plan: $120/month for 4 haircuts — one per weekly window; an unused week expires and doesn't carry over. Plan bookings need no deposit; the barber scans your membership code at the shop.
 - Gift a haircut: buy any service at full price and share the gift code/link with anyone; valid 12 months, single-use; the recipient can save it to their own account from the link.
 - Booking only shows each barber's working hours; closed days are struck through.

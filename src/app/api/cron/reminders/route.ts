@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listBookings, saveBooking, getBarbers, getServices } from '@/lib/store';
 import { sendPushToUser, isPushConfigured } from '@/lib/push';
+import { secretMatches } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // Each reminder is sent once per booking (reminded24h / reminded2h flags).
 export async function POST(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('x-cron-secret') !== secret) {
+  if (!secretMatches(req.headers.get('x-cron-secret'), secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   // Retry barber payouts that failed when a haircut completed (usually

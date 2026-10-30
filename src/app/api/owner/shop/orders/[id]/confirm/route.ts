@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getShopOrder, saveShopOrder } from '@/lib/store';
 import { sendPushToUser } from '@/lib/push';
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // From this point the barber can no longer cancel it. For 'earnings'
 // orders the debt becomes real now (his next payouts settle it first).
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const order = await getShopOrder(id);
   if (!order) return NextResponse.json({ error: 'Order not found.' }, { status: 404 });

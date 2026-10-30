@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
 import { getBarbers, saveBarbers } from '@/lib/store';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { refreshConnectStatus } from '@/lib/payouts';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ function baseUrl(req: Request): string {
 // We create a Connect account (Accounts v2) and return Stripe's secure
 // onboarding URL — the barber enters bank details on Stripe's site, never in our app.
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const barbers = await getBarbers();
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
 
 // Check the barber's Connect onboarding status.
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const barbers = await getBarbers();
@@ -109,7 +109,8 @@ export async function GET(req: Request) {
       barberId: barber.id,
     });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Could not check status.';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Audit L4 (2026-10-29): raw Stripe errors stay in the server log.
+    console.error('[connect] status check failed', e);
+    return NextResponse.json({ error: 'Could not check status.' }, { status: 500 });
   }
 }

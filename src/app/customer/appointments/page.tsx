@@ -30,6 +30,7 @@ interface MyBooking {
   depositPaid: number | null;
   remaining: number | null;
   hasSavedCard: boolean;
+  balanceChargeFailed?: boolean;
   membership: 'pending' | 'redeemed' | null;
 }
 
@@ -54,7 +55,11 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
   const { t } = useLang();
   const inactive = b.status !== 'booked';
   const remaining = b.remaining ?? 0;
-  const showCode = !inactive && remaining > 0 && b.hasSavedCard;
+  // Saved card: the remaining balance is charged automatically when the
+  // haircut is done — the payment code is only a fallback for when that
+  // automatic charge already failed.
+  const showCode = !inactive && remaining > 0 && b.hasSavedCard && b.balanceChargeFailed === true;
+  const autoChargeNote = !inactive && remaining > 0 && b.hasSavedCard && !b.balanceChargeFailed;
   const payAtShop = !inactive && remaining > 0 && !b.hasSavedCard;
   const paidInFull = !inactive && b.paymentStatus === 'paid_in_full';
   const planPending = !inactive && b.membership === 'pending';
@@ -134,15 +139,16 @@ function BookingCard({ b, getToken, unread, onChat }: { b: MyBooking; getToken: 
           {t('appt.coveredByPlan')}
         </p>
       )}
-      {payAtShop && (
+      {(payAtShop || autoChargeNote) && (
         <p className="text-[13px] text-neutral-500 mt-2 bg-[#f7f2e2] border border-[#e6dabf] rounded-xl px-3 py-2">
           {(() => {
-            const parts = t('appt.payAtShop').split('{amount}');
+            const key = payAtShop ? 'appt.payAtShopNoCard' : 'appt.payAtShop';
+            const parts = t(key).split('{amount}');
             const amt = `$${remaining.toFixed(2)}`;
             return parts.length === 2 ? (
               <>{parts[0]}<b className="text-gold">{amt}</b>{parts[1]}</>
             ) : (
-              t('appt.payAtShop').replace('{amount}', amt)
+              t(key).replace('{amount}', amt)
             );
           })()}
         </p>

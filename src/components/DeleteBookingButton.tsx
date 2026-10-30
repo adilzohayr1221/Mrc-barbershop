@@ -6,7 +6,7 @@ import { TrashIcon } from './Icons';
 /** Danger-styled "Delete" button for CANCELLED / NO-SHOW bookings only, with a
  *  mandatory strong confirmation shown inline, right under the button.
  *  Permanent hard delete — the record is removed forever.
- *  Used by both the barber and owner dashboards. */
+ *  Owner dashboard only (audit L3: booking DELETE is owner-only). */
 export function DeleteBookingButton({
   bookingId,
   getToken,

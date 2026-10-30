@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getCustomers } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: list customer accounts (public fields only — never passwordHash).
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const customers = await getCustomers();
   return NextResponse.json({
     customers: customers

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getSkillVerification, saveSkillVerification, getBarbers, saveBarber } from '@/lib/store';
 import { sendPushToUser } from '@/lib/push';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // barber's public profile so customers trust it.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const action = body?.action;
   if (action !== 'approve' && action !== 'reject') {

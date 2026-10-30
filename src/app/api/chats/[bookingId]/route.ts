@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifySession, bearerToken } from '@/lib/auth';
+import { validateCustomerSession, validateBarberSession } from '@/lib/guard';
 import {
   getBooking, newId, getBarbers, getCustomer,
   getChatMessages, saveChatMessage, deleteChatMessage,
@@ -16,6 +17,12 @@ const MAX_LEN = 500;
 async function authorize(req: Request, bookingId: string) {
   const session = verifySession(bearerToken(req));
   if (!session || (session.role !== 'customer' && session.role !== 'barber')) return { error: 'Unauthorized', status: 401 as const };
+  // Audit M7 (2026-10-29): a signature-valid token is not enough — the
+  // account must still exist at the token's auth version (deleted
+  // accounts and password-reset customers lose chat access immediately).
+  const stillValid =
+    session.role === 'customer' ? await validateCustomerSession(session) : await validateBarberSession(session);
+  if (!stillValid) return { error: 'Unauthorized', status: 401 as const };
   const booking = await getBooking(bookingId);
   if (!booking) return { error: 'Not found', status: 404 as const };
   const isCustomer = session.role === 'customer' && booking.customerId === session.customerId;

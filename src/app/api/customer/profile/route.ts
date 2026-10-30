@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getCustomer, saveCustomer, getBarbers, savePhoto } from '@/lib/store';
-import { requireCustomer } from '@/lib/auth';
+import { getCustomer, saveCustomer, getBarbers, savePhoto, sniffImageType, deletePhoto } from '@/lib/store';
+import { signPhotoUrl } from "@/lib/auth";
+import { requireActiveCustomer } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
 function photoUrlOf(c: { photoPath?: string | null }): string | null {
-  return c.photoPath ? `/api/photos/${encodeURIComponent(c.photoPath.split('/').pop() || '')}` : null;
+  return c.photoPath ? signPhotoUrl(c.photoPath.split('/').pop() || '') : null;
 }
 
 // Customer's own profile: name, email, photo, and favorite barber.
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const c = await getCustomer(session.customerId);
   if (!c) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
 
 // Update name and/or favorite barber (JSON body).
 export async function PATCH(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const c = await getCustomer(session.customerId);
   if (!c) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -71,7 +72,7 @@ export async function PATCH(req: Request) {
 
 // Upload/replace the profile photo (multipart form-data, field "photo").
 export async function POST(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const c = await getCustomer(session.customerId);
   if (!c) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -85,13 +86,17 @@ export async function POST(req: Request) {
   if (ab.byteLength > 5 * 1024 * 1024) {
     return NextResponse.json({ error: 'Photo is too large (max 5MB).' }, { status: 400 });
   }
-  const type = photo.type || 'image/jpeg';
-  if (!type.startsWith('image/')) {
+  // Audit M13: sniff the real image type from the bytes.
+  const sniffed = sniffImageType(Buffer.from(ab));
+  if (!sniffed) {
     return NextResponse.json({ error: 'File must be an image.' }, { status: 400 });
   }
-  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
-  const path = await savePhoto(`customer-${c.id}.${ext}`, Buffer.from(ab), type);
+  const previousPath = c.photoPath;
+  const path = await savePhoto(`customer-${c.id}.${sniffed.ext}`, Buffer.from(ab), sniffed.mime);
   c.photoPath = path;
   await saveCustomer(c);
+  // Audit L9 (2026-10-29): delete the replaced blob (the file name only
+  // changes when the image type changes, but a stale copy must not linger).
+  if (previousPath && previousPath !== path) await deletePhoto(previousPath);
   return NextResponse.json({ ok: true, photoUrl: photoUrlOf(c) });
 }

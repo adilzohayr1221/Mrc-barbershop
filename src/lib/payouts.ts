@@ -4,9 +4,11 @@ import {
   listBookings, saveBooking, listGifts, saveGift, listTips, saveTip,
   listWalkinPayments, saveWalkinPayment,
   listMemberships, listRedemptions, saveRedemption,
+  claimOnceStale, releaseClaim,
 } from '@/lib/store';
-import { membershipPayoutPerWeek } from '@/lib/membership';
+import { membershipRedemptionPayout, membershipPayoutKey } from '@/lib/membership';
 import { payoutForBooking } from '@/lib/vip';
+import { bookingStarted } from '@/lib/earnings';
 
 // Barber payouts via Stripe Connect.
 // Money flow: all customer charges land in the owner's (platform) Stripe
@@ -47,13 +49,47 @@ export async function payoutToBarber(
   }
 
   // Settle supply-shop debt from this payout first (never by card).
+  // Audit M1 (2026-10-29): the read-debt → transfer → settle sequence was
+  // not atomic — two concurrent payouts for the same barber (different
+  // bookings, different idempotency keys) could both read the same debt,
+  // both withhold it from their transfers, and the barber lost it twice
+  // (the second settle then found nothing left to settle). The whole
+  // sequence now runs under a per-barber debt lock (create-only claim,
+  // stealable after 2 minutes so a crashed invocation can't wedge it).
+  // A payout that can't get the lock simply doesn't withhold — the debt
+  // stays outstanding and settles from the next payout instead of ever
+  // being settled twice. A crash between transfer and settle is healed by
+  // the caller's same-key retry, which re-runs this flow (Stripe returns
+  // the original transfer for the same idempotency key).
   let supplyDeducted = 0;
+  const debtLockKey = `shop-debt-lock-${barberId}`;
+  const debtLock = await claimOnceStale(debtLockKey, 2 * 60 * 1000).catch(() => false);
   try {
-    const debt = await getShopDebt(barberId);
-    supplyDeducted = Math.min(debt, amount);
-  } catch (e) {
-    console.error('[payout] shop debt check failed', barberId, e);
+    if (debtLock) {
+      try {
+        const debt = await getShopDebt(barberId);
+        supplyDeducted = Math.min(debt, amount);
+      } catch (e) {
+        console.error('[payout] shop debt check failed', barberId, e);
+      }
+    }
+    return await payoutWithDebtSettled(barberId, barber, amount, supplyDeducted, opts);
+  } finally {
+    if (debtLock) await releaseClaim(debtLockKey).catch(() => {});
   }
+}
+
+async function payoutWithDebtSettled(
+  barberId: string,
+  barber: { name: string; stripeAccountId?: string | null },
+  amount: number,
+  supplyDeducted: number,
+  opts: { idempotencyKey: string; description: string; metadata?: Record<string, string> }
+): Promise<PayoutResult> {
+  if (!barber.stripeAccountId) {
+    return { ok: false, error: `${barber.name} has not connected a bank account yet.` };
+  }
+  const stripeAccountId: string = barber.stripeAccountId;
   const net = Math.round((amount - supplyDeducted) * 100) / 100;
 
   // The barber bears Stripe's bank-payout fee (owner's rule). Stripe v2 +
@@ -69,7 +105,7 @@ export async function payoutToBarber(
         {
           amount: toCents(netAfterFee),
           currency: 'usd',
-          destination: barber.stripeAccountId,
+          destination: stripeAccountId,
           description: opts.description,
           metadata: {
             barberId,
@@ -221,26 +257,82 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
     }
   }
 
+  // Automatic remaining-balance charges (owner's order, 2026-10-25).
+  // Bookings completed before automatic charging existed — or whose
+  // completion-time charge failed — still sit at paymentStatus 'paid'
+  // with only the $5 deposit collected; the rest of the price is owed by
+  // the customer's saved card. Charge it here, BEFORE the payout loop
+  // below, so the payout in this same pass covers the full amount.
+  // Safety mirrors the payout rules: never charge for an appointment
+  // whose start hasn't arrived (audit M2), never touch cancelled or
+  // membership bookings, and the charge itself is idempotent per booking.
+  try {
+    const { chargeRemainingBalance } = await import('@/lib/balanceCharge');
+    for (const b of bookings) {
+      if (!b.completedAt) continue;
+      if (b.status === 'cancelled') continue;
+      if (b.paymentStatus !== 'paid') continue;
+      if (new Date(b.completedAt).getTime() < cutoff) continue;
+      if (!bookingStarted(b)) continue;
+      try {
+        await chargeRemainingBalance(b);
+      } catch (e) {
+        console.error('[sweep] balance charge failed', b.id, e);
+      }
+    }
+  } catch (e) {
+    console.error('[sweep] balance-charge pass failed', e);
+  }
+
   // Booking payouts (photo-verified completions).
   for (const b of bookings) {
-    if (!b.completedAt || b.payoutTransferId || (b.payoutAmount ?? 0) > 0) continue;
+    if (!b.completedAt) continue;
     if (b.status === 'cancelled') continue;
     if (b.paymentStatus !== 'paid' && b.paymentStatus !== 'paid_in_full') continue;
-    const amount = payoutForBooking(b);
-    await attempt({
-      barberId: b.barberId,
-      amount,
-      idempotencyKey: `payout-booking-${b.id}`,
-      description: `MRC Barbershops — haircut payout (${b.date} ${b.time})`,
-      metadata: { kind: 'booking_payout', bookingId: b.id },
-      matchMeta: (m) => m.bookingId === b.id,
-      whenIso: b.completedAt,
-      onSuccess: async (tid) => {
-        b.payoutTransferId = tid;
-        b.payoutAmount = amount;
-        await saveBooking(b);
-      },
-    });
+    // Audit M2: never pay for an appointment whose start hasn't arrived
+    // (a future booking marked done early) — it becomes payable here once
+    // its start passes.
+    if (!bookingStarted(b)) continue;
+    const owed = payoutForBooking(b);
+    const already = b.payoutAmount ?? 0;
+    if (owed <= 0 || already >= owed) continue;
+    if (!b.payoutTransferId && already === 0) {
+      // First (full) payout attempt — unchanged behavior.
+      await attempt({
+        barberId: b.barberId,
+        amount: owed,
+        idempotencyKey: `payout-booking-${b.id}`,
+        description: `MRC Barbershops — haircut payout (${b.date} ${b.time})`,
+        metadata: { kind: 'booking_payout', bookingId: b.id },
+        matchMeta: (m) => m.bookingId === b.id && m.leg !== 'remainder',
+        whenIso: b.completedAt,
+        onSuccess: async (tid) => {
+          b.payoutTransferId = tid;
+          b.payoutAmount = owed;
+          await saveBooking(b);
+        },
+      });
+    } else {
+      // Audit H3 (2026-10-22): the remainder leg. Done paid out what was
+      // collected at the time (the $5 deposit); Collect later grew the
+      // collected total, but the old sweep skipped any booking that already
+      // had a transfer — stranding the rest (e.g. $35) forever. Pay exactly
+      // the difference, under its own idempotency key + metadata leg.
+      const remainder = Math.round((owed - already) * 100) / 100;
+      await attempt({
+        barberId: b.barberId,
+        amount: remainder,
+        idempotencyKey: `payout-booking-${b.id}-remainder`,
+        description: `MRC Barbershops — haircut payout, remainder (${b.date} ${b.time})`,
+        metadata: { kind: 'booking_payout', bookingId: b.id, leg: 'remainder' },
+        matchMeta: (m) => m.bookingId === b.id && m.leg === 'remainder',
+        whenIso: b.completedAt,
+        onSuccess: async () => {
+          b.payoutAmount = owed;
+          await saveBooking(b);
+        },
+      });
+    }
   }
 
   // Gift payouts (full gift value to the redeeming barber).
@@ -269,7 +361,7 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
     await attempt({
       barberId: t.barberId,
       amount: t.amount,
-      idempotencyKey: `payout-tip-${t.id}`,
+      idempotencyKey: `payout-tip-${t.source}-${t.sourceId}`,
       description: `MRC Barbershops — customer tip ($${t.amount.toFixed(2)})`,
       metadata: { kind: 'tip_payout', tipId: t.id },
       matchMeta: (m) => m.tipId === t.id,
@@ -288,7 +380,7 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
     await attempt({
       barberId: w.barberId,
       amount: w.amount,
-      idempotencyKey: `payout-walkin-${w.id}`,
+      idempotencyKey: `payout-walkin-pi-${w.paymentIntentId}`,
       description: `MRC Barbershops — walk-in payment ($${w.amount.toFixed(2)})`,
       metadata: { kind: 'walkin_payout', walkinId: w.id },
       matchMeta: (m) => m.walkinId === w.id,
@@ -308,14 +400,43 @@ export async function retryFailedPayouts(): Promise<PayoutRetryOutcome> {
     const reds = await listRedemptions(m.id).catch(() => []);
     for (const r of reds) {
       if (!r.payoutFailed || r.payoutTransferId) continue;
-      const amount = membershipPayoutPerWeek(m);
+      const amount = membershipRedemptionPayout(m, r.guest === true);
       await attempt({
         barberId: r.barberId,
         amount,
-        idempotencyKey: `payout-membership-${m.id}-${r.weekIndex}-${r.periodStart}`,
-        description: `MRC Barbershops — plan haircut payout (Week ${r.weekIndex + 1})`,
-        metadata: { kind: 'membership_payout', membershipId: m.id },
-        matchMeta: (md) => md.kind === 'membership_payout' && md.membershipId === m.id,
+        // Guest-aware key — must match the redeem route exactly, or a guest
+        // retry could collide with the member's own payout for that week.
+        idempotencyKey: membershipPayoutKey(m.id, r.weekIndex, r.periodStart, r.guest === true),
+        description:
+          r.guest === true
+            ? `MRC Barbershops — plan GUEST haircut payout (Week ${r.weekIndex + 1})`
+            : `MRC Barbershops — plan haircut payout (Week ${r.weekIndex + 1})`,
+        // Audit H3 (2026-10-29): the transfer metadata and the adoption
+        // matcher now carry the full redemption identity — week index,
+        // period start and guest flag. The old matcher (kind + membershipId
+        // only) could adopt the WRONG transfer for a retry: the member's
+        // retry could adopt the guest's transfer for the same week (or
+        // another week's), recording a payout that never happened for this
+        // redemption while the real one stayed stranded.
+        metadata: {
+          kind: 'membership_payout',
+          membershipId: m.id,
+          weekIndex: String(r.weekIndex),
+          periodStart: r.periodStart,
+          ...(r.guest === true ? { guest: '1' } : {}),
+        },
+        matchMeta: (md) => {
+          if (md.kind !== 'membership_payout' || md.membershipId !== m.id) return false;
+          if ((md.guest === '1') !== (r.guest === true)) return false;
+          if (md.weekIndex !== undefined || md.periodStart !== undefined) {
+            // Post-fix transfer: require the exact redemption identity.
+            return md.weekIndex === String(r.weekIndex) && md.periodStart === r.periodStart;
+          }
+          // Legacy transfer (created before week/period were stamped):
+          // adoptable only when the guest flag matches — the find window
+          // is anchored on this redemption's own timestamp.
+          return true;
+        },
         whenIso: r.redeemedAt,
         onSuccess: async (tid) => {
           r.payoutTransferId = tid;

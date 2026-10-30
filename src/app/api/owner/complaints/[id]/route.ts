@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getComplaint, saveComplaint, saveComp, newId, getServices } from '@/lib/store';
 import { sendPushToUser } from '@/lib/push';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // never a cash refund.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const action = body?.action;
   if (action !== 'grant' && action !== 'dismiss') {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { listWorkPhotos, getBarbers } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +11,7 @@ function photoUrlOf(p: { photoPath: string }): string {
 
 // GET /api/owner/photos → pending work photos awaiting owner approval.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [all, barbers] = await Promise.all([listWorkPhotos(), getBarbers()]);
   const names = new Map(barbers.map((b) => [b.id, b.name]));
   const pending = all

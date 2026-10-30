@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { getBooking, saveBooking, getServices, getBarbers } from '@/lib/store';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { remainingFor } from '@/lib/stripe';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // remaining balance from the card saved at booking time.
 // The token is short-lived (10 minutes) and single-use.
 export async function POST(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

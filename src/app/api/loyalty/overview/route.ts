@@ -1,23 +1,28 @@
 import { NextResponse } from 'next/server';
-import { requireOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from "@/lib/auth";
+import { requireActiveOwner } from "@/lib/guard";
 import { listBarberMilestones, listLoyaltyRewards, getBarbers, inSalon } from '@/lib/store';
-import { BONUS_10_USD, BONUS_100_USD } from '@/lib/loyalty';
+import { BONUS_10_USD, BONUS_100_USD, healedBarberMilestone } from '@/lib/loyalty';
 
 export const dynamic = 'force-dynamic';
 
 // Owner overview: every barber's milestone progress + bonus states,
 // plus loyalty free-haircut stats.
 export async function GET(req: Request) {
-  const session = requireOwner(req);
+  const session = await requireActiveOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
-  const [milestones, barbers, rewards] = await Promise.all([
+  const [, barbers, rewards] = await Promise.all([
     listBarberMilestones(),
     getBarbers(),
     listLoyaltyRewards(),
   ]);
-  const rows = barbers
-    .filter((b) => b.active && inSalon(b, salonId))
+  const activeBarbers = barbers.filter((b) => b.active && inSalon(b, salonId));
+  // Heal every shown barber's count from the real completed haircuts first,
+  // so the owner's numbers match what each barber sees.
+  await Promise.all(activeBarbers.map((b) => healedBarberMilestone(b.id)));
+  const milestones = await listBarberMilestones();
+  const rows = activeBarbers
     .map((b) => {
       const m = milestones.find((x) => x.barberId === b.id);
       return {

@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { listRedemptions, getCustomer } from '@/lib/store';
-import { listActiveMemberships, buildWeeks, PLAN_PRICE_USD, PLAN_HAIRCUTS, membershipPrice, membershipPlanName } from '@/lib/membership';
+import { listActiveMemberships, buildWeeks, currentGuestSlot, PLAN_PRICE_USD, PLAN_HAIRCUTS, membershipPrice, membershipPlanName, membershipInterval } from '@/lib/membership';
 
 export const dynamic = 'force-dynamic';
 
 // Customer-only: all of my plans (one account can hold several — e.g. for
-// family members) + the 4 weekly haircut windows for each.
+// family members) + the weekly haircut windows for each (4 monthly · 48 yearly).
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -44,6 +45,22 @@ export async function GET(req: Request) {
         planKind: membership.planKind ?? 'standard',
         planName: membershipPlanName(membership),
         planPrice: membershipPrice(membership),
+        planInterval: membershipInterval(membership),
+        totalWeeks: weeks.length,
+        // Yearly-plan guest slot for the CURRENT week (null on other plans).
+        guestSlot:
+          membership.planKind === 'yearly'
+            ? (() => {
+                const g = currentGuestSlot(membership, redemptions);
+                return g
+                  ? { state: g.state, weekIndex: g.index, label: g.label, start: g.start.toISOString(), end: g.end.toISOString() }
+                  : null;
+              })()
+            : null,
+        guestWeeksUsed:
+          membership.planKind === 'yearly'
+            ? redemptions.filter((r) => r.guest === true && r.periodStart === membership.currentPeriodStart).length
+            : 0,
         weeklyServices: membership.weeklyServices ?? null,
       };
     })

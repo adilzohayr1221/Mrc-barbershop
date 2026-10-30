@@ -5,17 +5,18 @@ import { useRouter } from 'next/navigation';
 import { LogOutIcon, StarIcon, CalendarIcon, ClockIcon, GearIcon } from '@/components/Icons';
 import { BarberDashboardSkeleton } from '@/components/Loading';
 import { CancelBookingButton, CancelledLabel, NoShowLabel } from '@/components/CancelBookingButton';
-import { DeleteBookingButton } from '@/components/DeleteBookingButton';
 import { CollectScanner } from '@/components/CollectScanner';
 import PaymentStep from '@/components/PaymentStep';
 import { QRCodeSVG } from 'qrcode.react';
 import { EnableNotifications } from '@/components/EnableNotifications';
 import { NoShowButton } from '@/components/NoShowButton';
 import { ChatModal } from '@/components/ChatModal';
+import { formatDateUS, formatPhoneUS } from '@/lib/format';
 import { TeamChatModal } from '@/components/TeamChatModal';
 import { BarberTasks } from '@/components/BarberTasks';
 import { Leaderboard } from '@/components/Leaderboard';
 import BonusCard from '@/components/BonusCard';
+import HistoryCard from '@/components/HistoryCard';
 import { useLang } from '@/components/LanguageContext';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import type { Booking, Review, WorkingHours, ShopProduct, ShopOrder } from '@/lib/types';
@@ -941,6 +942,10 @@ function SettingsModal({
         </div>
 
         <div className="mt-4">
+          <HistoryCard token={getToken() ?? ''} />
+        </div>
+
+        <div className="mt-4">
           <EnableNotifications getToken={() => getToken() ?? ''} />
         </div>
 
@@ -993,6 +998,9 @@ function DoneButton({ bookingId, token, onDone }: { bookingId: string; token: st
       });
       const d = await r.json().catch(() => null);
       if (!r.ok) throw new Error(d?.error || t('barber.done.error_generic'));
+      if (d.balanceFailed) {
+        setError(t('barber.done.balance_failed').replace('{error}', d.balanceError || ''));
+      }
       if (d.payoutFailed) {
         setError(t('barber.done.payout_failed').replace('{error}', d.error || 'try again later.'));
       }
@@ -1179,9 +1187,30 @@ export default function BarberDashboard() {
     loadEarnings();
     loadUnread();
     loadTeamUnread();
-    const t = setInterval(loadTeamUnread, 30000);
+    const t = setInterval(() => {
+      loadTeamUnread();
+      loadEarnings();
+    }, 30000);
     return () => clearInterval(t);
   }, [load, loadEarnings, loadUnread, loadTeamUnread]);
+
+  // Coming back to the app (unlock, tab switch) refreshes the numbers at
+  // once — the barber watches the earnings card all day, it must never sit
+  // stale until a manual reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+        loadEarnings();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [load, loadEarnings]);
 
   useEffect(() => {
     fetch('/api/barber/house-calls', { headers: { Authorization: `Bearer ${barberToken()}` } })
@@ -1297,15 +1326,9 @@ export default function BarberDashboard() {
       today: d.today.map((b) => (b.id === id ? { ...b, completedAt: new Date().toISOString(), payoutAmount } : b)),
       upcoming: d.upcoming.map((b) => (b.id === id ? { ...b, completedAt: new Date().toISOString(), payoutAmount } : b)),
     }));
+    // The earnings card must move the moment a haircut is done.
+    loadEarnings();
   }
-  function removeBookingLocal(id: string) {
-    setData((d) => d && ({
-      ...d,
-      today: d.today.filter((b) => b.id !== id),
-      upcoming: d.upcoming.filter((b) => b.id !== id),
-    }));
-  }
-
   function logout() {
     localStorage.removeItem('mrc_barber_token');
     localStorage.removeItem('mrc_barber_name');
@@ -1496,13 +1519,13 @@ export default function BarberDashboard() {
             <CustomerAvatar b={next} size={44} />
             <div className="min-w-0">
               <div className="font-extrabold text-xl tracking-tight text-[#141414] truncate">{next.customerName}</div>
-              <div className="text-sm text-neutral-600 mt-0.5">{next.customerPhone}</div>
+              <div className="text-sm text-neutral-600 mt-0.5">{formatPhoneUS(next.customerPhone || '')}</div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-sm text-neutral-700 mt-2">
-            <CalendarIcon size={14} className="text-gold" /> {next.date}
+            <CalendarIcon size={14} className="text-gold" /> {formatDateUS(next.date)}
             <span className="text-neutral-600">·</span>
-            <ClockIcon size={14} className="text-gold" /> {next.time}
+            <ClockIcon size={14} className="text-gold" /> {fmtTime(next.time)}
             <span className="text-neutral-600">·</span> {next.serviceName}
           </div>
           <PayState b={next} />
@@ -1522,28 +1545,27 @@ export default function BarberDashboard() {
         {data.today.map((b) => b.status !== 'booked' ? (
           <div key={b.id} className="card p-4 opacity-55">
             <div className="flex items-center gap-4">
-              <span className="text-neutral-500 font-bold text-[15px] w-14 shrink-0">{b.time}</span>
+              <span className="text-neutral-500 font-bold text-[15px] w-[4.5rem] shrink-0 whitespace-nowrap">{fmtTime(b.time)}</span>
               <span className="h-10 w-px bg-neutral-300 shrink-0" />
               <span className="min-w-0 flex-1">
                 <span className="block font-semibold text-[15px] text-neutral-500 line-through">{b.customerName}</span>
-                <span className="block text-sm text-neutral-400 truncate">{b.serviceName} · {b.customerPhone}</span>
+                <span className="block text-sm text-neutral-400 truncate">{b.serviceName}</span>
+                {b.customerPhone && <span className="block text-sm text-neutral-400 truncate">📞 {formatPhoneUS(b.customerPhone)}</span>}
               </span>
               {b.status === 'cancelled' ? <CancelledLabel /> : <NoShowLabel />}
-            </div>
-            <div className="mt-1 ml-[4.5rem]">
-              <DeleteBookingButton bookingId={b.id} getToken={barberToken} onDeleted={() => removeBookingLocal(b.id)} />
             </div>
           </div>
         ) : (
           <div key={b.id} className="card p-4">
             <div className="flex items-center gap-4">
-              <span className="text-gold font-bold text-[15px] w-14 shrink-0">{b.time}</span>
+              <span className="text-gold font-bold text-[15px] w-[4.5rem] shrink-0 whitespace-nowrap">{fmtTime(b.time)}</span>
               <span className="h-10 w-px bg-gold/15 shrink-0" />
               <span className="min-w-0 flex-1 flex items-center gap-2.5">
                 <CustomerAvatar b={b} size={34} />
                 <span className="min-w-0">
                   <span className="block font-bold text-[15px] text-[#141414] truncate">{b.customerName}</span>
-                  <span className="block text-sm text-neutral-600 truncate">{b.serviceName} · {b.customerPhone}</span>
+                  <span className="block text-sm text-neutral-600 truncate">{b.serviceName}</span>
+                  {b.customerPhone && <span className="block text-sm text-neutral-600 truncate">📞 {formatPhoneUS(b.customerPhone)}</span>}
                 </span>
                 <PayState b={b} />
                 {b.completedAt && (
@@ -1574,18 +1596,15 @@ export default function BarberDashboard() {
         {data.upcoming.slice(0, 10).map((b) => b.status !== 'booked' ? (
           <div key={b.id} className="card p-4 opacity-55">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[15px] text-neutral-500 line-through">{b.date} · {b.time}</span>
+              <span className="font-semibold text-[15px] text-neutral-500 line-through">{formatDateUS(b.date)} · {fmtTime(b.time)}</span>
               {b.status === 'cancelled' ? <CancelledLabel /> : <NoShowLabel />}
             </div>
             <span className="block text-sm text-neutral-400 mt-0.5">{b.customerName} — {b.serviceName}</span>
-            <div className="mt-1">
-              <DeleteBookingButton bookingId={b.id} getToken={barberToken} onDeleted={() => removeBookingLocal(b.id)} />
-            </div>
           </div>
         ) : (
           <div key={b.id} className="card p-4">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[15px]">{b.date} · <span className="text-gold">{b.time}</span></span>
+              <span className="font-semibold text-[15px]">{formatDateUS(b.date)} · <span className="text-gold">{fmtTime(b.time)}</span></span>
             </div>
             <span className="block text-sm text-neutral-600 mt-0.5">{b.customerName} — {b.serviceName}</span>
             <PayState b={b} />
@@ -1623,7 +1642,7 @@ export default function BarberDashboard() {
         <ChatModal
           bookingId={chatBooking.id}
           title={t('barber.chat.title').replace('{name}', chatBooking.customerName)}
-          subtitle={`${chatBooking.date} · ${fmtTime(chatBooking.time)}`}
+          subtitle={`${formatDateUS(chatBooking.date)} · ${fmtTime(chatBooking.time)}`}
           me="barber"
           getToken={barberToken}
           onClose={() => {

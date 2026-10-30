@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+import { signPhotoUrl } from "@/lib/auth";
+import { requireActiveOwner } from "@/lib/guard";
 import { listComplaints, getBarbers, getCustomers } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
 function photoUrlOf(p: { photoPath: string }): string {
-  return `/api/photos/${encodeURIComponent(p.photoPath.split('/').pop() || '')}`;
+  return signPhotoUrl(p.photoPath.split('/').pop() || '');
 }
 
 // GET /api/owner/complaints — all complaints with customer/barber names.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [complaints, barbers, customers] = await Promise.all([
     listComplaints(),
     getBarbers(),

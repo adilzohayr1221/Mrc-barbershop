@@ -20,7 +20,10 @@ export async function GET(req: Request) {
   }
   try {
     const session = await getStripe().checkout.sessions.retrieve(sessionId);
-    const paid = session.payment_status === 'paid' || session.status === 'complete';
+    // Audit M12 (2026-10-22): activation requires money actually paid —
+    // a 'complete' session can exist with payment_status 'unpaid' (e.g. a
+    // delayed/failed first charge), which previously activated for free.
+    const paid = session.payment_status === 'paid';
     if (paid) {
       signup.status = 'active';
       signup.paidAt = new Date().toISOString();

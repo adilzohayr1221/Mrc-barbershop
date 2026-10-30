@@ -14,12 +14,17 @@ interface Summary {
   date?: string;
   time?: string;
   amount?: number;
+  cardFee?: number; // card processing fee included in the charge (credit-card bookings)
+  totalCharge?: number; // amount + cardFee — what the card is actually charged
   depositPaid?: number;
   price?: number;
   bookingId?: string;
   // membership (MRC2)
   membershipId?: string;
+  planKind?: string; // plan actually scanned — the Plan label follows it
   weekLabel?: string;
+  guestAvailable?: boolean; // yearly plan: this week's guest slot still open
+  guestWeekLabel?: string;
   // gift (MRC3)
   giftId?: string;
   shortCode?: string;
@@ -90,6 +95,8 @@ export function CollectScanner({
   const [showManual, setShowManual] = useState(false);
   // Proof-of-completion photo (membership/gift): taken with the camera before
   // the redeem payout is released — like DoorDash proof-of-delivery.
+  // Yearly-plan guest cut: barber marks the scan as the guest's redemption.
+  const [guestCut, setGuestCut] = useState(false);
   const [photoStep, setPhotoStep] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -101,8 +108,9 @@ export function CollectScanner({
 
   function parseCode(raw: string): ParsedCode | null {
     const code = raw.trim();
-    // A bare 6-character code is a gift short code (no colons).
-    if (/^[A-Z0-9]{6}$/i.test(code)) return { kind: 'giftShort', shortCode: code.toUpperCase() };
+    // A bare short code is a gift code (no colons): 6 chars on gifts issued
+    // before the 2026-10-22 audit fix, 8 chars on newer ones.
+    if (/^[A-Z0-9]{6,8}$/i.test(code)) return { kind: 'giftShort', shortCode: code.toUpperCase() };
     const parts = code.split(':');
     // Wallet pass QR: MRCW:membershipId (static, no rotating token)
     if (parts[0] === 'MRCW' && parts.length === 2 && parts[1]) {
@@ -236,6 +244,7 @@ token: parsed.token,
           customerName: d.customerName,
           token: '',
           membershipId: parsed.membershipId,
+          planKind: d.planKind,
           weekLabel: d.weekLabel,
           serviceName: d.serviceName,
         });
@@ -254,9 +263,14 @@ token: parsed.token,
           customerName: d.customerName,
           token: parsed.token,
           membershipId: parsed.membershipId,
+          planKind: d.planKind,
           weekLabel: d.weekLabel,
           serviceName: d.serviceName,
+          guestAvailable: d.guestAvailable === true,
+          guestWeekLabel: d.guestWeekLabel,
         });
+        // Member's own week already spent — this scan can only be the guest.
+        if (d.memberWeekUsed === true) setGuestCut(true);
       } else {
         const r = await fetch('/api/payments/collect', {
           method: 'POST',
@@ -275,6 +289,8 @@ token: parsed.token,
           date: d.date,
           time: d.time,
           amount: d.amount,
+          cardFee: d.cardFee ?? 0,
+          totalCharge: d.totalCharge ?? d.amount,
           depositPaid: d.depositPaid,
           price: d.price,
           bookingId: parsed.bookingId,
@@ -302,6 +318,7 @@ token: parsed.token,
     setSummary(null);
     setManual('');
     setShowManual(false);
+    setGuestCut(false);
     resetPhoto();
     let cancelled = false;
     (async () => {
@@ -413,6 +430,7 @@ token: parsed.token,
         const form = new FormData();
         form.append('membershipId', summary.membershipId!);
         form.append('token', summary.token);
+        if (guestCut) form.append('guest', 'true');
         form.append('photo', photoFile, 'plan.jpg');
         const r = await fetch('/api/memberships/redeem', {
           method: 'POST',
@@ -443,6 +461,7 @@ token: parsed.token,
   function scanDifferent() {
     setSummary(null);
     setPhase('scan');
+    setGuestCut(false);
     resetPhoto();
     restartCamera();
   }
@@ -623,13 +642,26 @@ token: parsed.token,
                 <h3 className="font-extrabold text-[18px] text-center">{t('barber.scan.membership_title')}</h3>
                 <div className="mt-4 grid gap-2 text-[15px] bg-[#f7f2e2] border border-[#e6dabf] rounded-2xl p-4">
                   <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_member')}</span><b className="text-right">{summary.customerName}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_plan')}</span><b className="text-right">{t('barber.scan.membership_plan_value')}</b></p>
-                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_week')}</span><b className="text-right">{summary.weekLabel}{summary.serviceName ? ` — ${summary.serviceName}` : ''}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_plan')}</span><b className="text-right">{summary.planKind === 'yearly' ? t('barber.scan.membership_plan_value_yearly') : t('barber.scan.membership_plan_value')}</b></p>
+                  <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.membership_week')}</span><b className="text-right">{guestCut && summary.guestWeekLabel ? summary.guestWeekLabel : summary.weekLabel}{summary.serviceName ? ` — ${summary.serviceName}` : ''}</b></p>
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
                     <span className="font-bold">{t('barber.scan.membership_redeem')}</span>
-                    <b className="text-gold text-[20px]">{summary.serviceName ?? t('barber.scan.membership_redeem_value')}</b>
+                    <b className="text-gold text-[20px]">{guestCut ? `🎁 ${t('barber.scan.guest_badge')}` : (summary.serviceName ?? t('barber.scan.membership_redeem_value'))}</b>
                   </p>
                 </div>
+                {summary.guestAvailable && (
+                  <button
+                    type="button"
+                    onClick={() => setGuestCut((g) => !g)}
+                    className={`w-full mt-3 rounded-xl px-3.5 py-2.5 text-[13px] font-bold border-2 transition-all ${
+                      guestCut
+                        ? 'border-gold bg-gold/15 text-[#1c1a15]'
+                        : 'border-neutral-200 bg-white text-neutral-600'
+                    }`}
+                  >
+                    🎁 {t('barber.scan.guest_toggle')} {guestCut ? '✓' : ''}
+                  </button>
+                )}
                 <p className="text-[12px] text-neutral-500 text-center mt-2">{t('barber.scan.membership_note')}</p>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
                 <button
@@ -746,9 +778,12 @@ token: parsed.token,
                   <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_service')}</span><b className="text-right">{summary.serviceName!}</b></p>
                   <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_when')}</span><b className="text-right">{summary.date!} at {summary.time!}</b></p>
                   <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_deposit')}</span><b className="text-right">${summary.depositPaid!.toFixed(2)}</b></p>
+                  {(summary.cardFee ?? 0) > 0 && (
+                    <p className="flex justify-between gap-3"><span className="text-neutral-500">{t('barber.scan.payment_card_fee')}</span><b className="text-right">${summary.cardFee!.toFixed(2)}</b></p>
+                  )}
                   <p className="flex justify-between gap-3 pt-2 mt-1 border-t border-[#e6dabf]">
                     <span className="font-bold">{t('barber.scan.payment_charge_now')}</span>
-                    <b className="text-gold text-[20px]">${summary.amount!.toFixed(2)}</b>
+                    <b className="text-gold text-[20px]">${(summary.totalCharge ?? summary.amount!).toFixed(2)}</b>
                   </p>
                 </div>
                 {error && <p className="text-sm text-red-700 mt-3 text-center leading-relaxed">{error}</p>}
@@ -757,7 +792,7 @@ token: parsed.token,
                   disabled={busy}
                   className="gold-btn rounded-2xl w-full font-extrabold text-[16px] py-4 mt-4 disabled:opacity-50"
                 >
-                  {busy ? t('barber.scan.payment_charging') : t('barber.scan.payment_cta').replace('{amount}', summary.amount!.toFixed(2))}
+                  {busy ? t('barber.scan.payment_charging') : t('barber.scan.payment_cta').replace('{amount}', (summary.totalCharge ?? summary.amount!).toFixed(2))}
                 </button>
                 <button
                   onClick={scanDifferent}
@@ -807,7 +842,7 @@ token: parsed.token,
                 </div>
                 <h3 className="font-extrabold text-[19px]">{t('barber.scan.payment_done_title')}</h3>
                 <p className="text-sm text-neutral-600 mt-2 leading-relaxed">
-                  {fillTemplate(t('barber.scan.payment_done_body'), { amount: <b>${summary.amount!.toFixed(2)}</b>, name: summary.customerName })}
+                  {fillTemplate(t('barber.scan.payment_done_body'), { amount: <b>${(summary.totalCharge ?? summary.amount!).toFixed(2)}</b>, name: summary.customerName })}
                   <br />{fillTemplate(t('barber.scan.payment_done_total'), { total: <b>${summary.price!.toFixed(2)}</b> })}
                 </p>
                 <button onClick={close} className="gold-btn rounded-2xl font-bold text-[15px] px-10 py-3 mt-6">

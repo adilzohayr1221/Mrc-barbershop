@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getTask, saveTask, saveCompletionPhoto, inSalon } from '@/lib/store';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Barber: submit photo proof that the task is done.
 // Multipart form with a `photo` field (camera). Sets my assignment to 'submitted'.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

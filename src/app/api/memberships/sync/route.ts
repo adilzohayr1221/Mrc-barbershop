@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
 import { getMembershipBySubscriptionId, saveMembership, newId } from '@/lib/store';
 import { ensureStripeCustomer, syncMembershipFromStripe, subscriptionPeriod } from '@/lib/membership';
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: 'Payments are not configured yet.' }, { status: 503 });
   }
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Please log in.' }, { status: 401 });
   }
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
     if (!membership) {
       const { start, end } = subscriptionPeriod(mine);
       const isCustom = mine.metadata?.planKind === 'custom';
+      const isYearly = mine.metadata?.planKind === 'yearly';
       let weeklyServices: Membership['weeklyServices'];
       let planPriceUsd: number | undefined;
       if (isCustom) {
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
         qrToken: null,
         qrTokenExpiry: null,
         ...(isCustom ? { planKind: 'custom' as const, planPriceUsd, weeklyServices } : {}),
+        ...(isYearly ? { planKind: 'yearly' as const } : {}),
       } satisfies Membership;
       await saveMembership(membership);
     }

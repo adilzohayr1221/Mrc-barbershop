@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getBarbers, saveBarber, salonOf } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
 // Salon-owner: activate/deactivate one of HIS barbers. Deactivation is the
 // "barber left" action — the record is kept (history, past bookings stay).
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const { id } = await params;
@@ -19,7 +20,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!barber || salonOf(barber) !== salonId) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   }
-  const updated = { ...barber, active: body.active };
+  const updated = {
+    ...barber,
+    active: body.active,
+    // Audit H5: deactivation kills the barber's outstanding sessions.
+    authVersion: body.active ? barber.authVersion : (barber.authVersion ?? 0) + 1,
+  };
   await saveBarber(updated);
   const { passwordHash: _ph, ...safe } = updated;
   return NextResponse.json({ barber: safe });

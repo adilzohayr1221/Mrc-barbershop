@@ -40,6 +40,9 @@ export interface SalonOwner extends TenantScoped {
   passwordHash: string; // scrypt hash — never sent to clients
   active: boolean;
   createdAt: string; // ISO
+  /** Session revocation counter (audit H6, 2026-10-22): bumped when the
+   *  account is deactivated or the salon is suspended. */
+  authVersion?: number;
 }
 
 // Tasks the shop owner assigns to barbers (e.g. "clean the mirrors").
@@ -94,6 +97,10 @@ export interface Barber extends TenantScoped {
   payoutsEnabled?: boolean; // Connect onboarding complete, can receive transfers
   houseCalls?: boolean; // barber opted in to VIP home visits ($100 flat, he gets $60)
   verifiedSkills?: string[]; // skills the owner verified from photo evidence
+  /** Session revocation counter (audit H5, 2026-10-22): bumped when the
+   *  barber is deactivated, deleted or his password is reset, which kills
+   *  every outstanding session token (tokens carry the version as `av`). */
+  authVersion?: number;
 }
 
 // A barber's photo evidence for one skill, sent to the owner as a batch.
@@ -144,7 +151,11 @@ export interface Booking extends TenantScoped {
   amountPaid?: number | null; // dollars, captured at booking time
   stripeCustomerId?: string | null; // Stripe customer owning the saved card
   stripePaymentMethodId?: string | null; // saved card, charged for the remaining balance after the haircut
+  cardFunding?: string | null; // funding of the card used at booking ('credit' | 'debit' | 'prepaid' | 'unknown' | 'non_card'), read from Stripe when the booking was created
+  cardFeeDueCents?: number | null; // card processing fee (cents) to add to the remaining-balance charge — credit cards only, disclosed at booking; absent/0 = no fee (always 0 for bookings made before the fee existed)
+  cardFeeCollectedCents?: number | null; // card processing fee actually collected (with the VIP payment or the remainder charge); never part of amountPaid or any payout
   remainingPaymentIntentId?: string | null; // off-session charge for the remaining balance
+  balanceChargeError?: string | null; // last automatic remaining-balance charge failure (shown to the barber; cleared on success)
   collectToken?: string | null; // single-use QR token for in-shop collection (server-side)
   collectTokenExpiry?: string | null; // ISO timestamp
   reminded24h?: boolean; // push reminder sent ~24h before the appointment
@@ -152,6 +163,8 @@ export interface Booking extends TenantScoped {
   completedAt?: string | null; // ISO — when the barber marked the haircut done
   completionPhotoPath?: string | null; // proof-of-completion photo (camera) — required before payout
   membershipId?: string | null; // when booked with a plan: which plan it belongs to
+  membershipGuest?: boolean; // yearly-plan GUEST booking: the member booked this
+    // appointment for his guest (free under the yearly plan's guest rule)
   payoutTransferId?: string | null; // Stripe Transfer ID for the barber's payout
   payoutAmount?: number | null; // dollars transferred to the barber
   refundedLegs?: string[]; // cancel-refund legs completed: 'deposit' | 'remainder'
@@ -183,8 +196,15 @@ export interface Membership extends TenantScoped {
   createdAt: string;
   qrToken?: string | null; // rotating short-lived token for the MRC2 QR code
   qrTokenExpiry?: string | null; // ISO timestamp
-  // Mix & Match plan (missing planKind = standard $120 plan).
-  planKind?: 'standard' | 'custom';
+  // Plan kind (missing planKind = standard $120/month plan).
+  // 'yearly' = the $1,300/year plan: same weekly rhythm, 48 windows over
+  // 12 monthly cycles inside one yearly Stripe period (see planWindows.ts).
+  // Yearly-plan GUEST RULE (owner, 2026-10-28): every weekly window of a
+  // yearly plan also carries ONE free guest cut. It needs no fields here —
+  // guest usage is derived from guest-flagged MembershipRedemptions keyed
+  // by (membershipId, weekIndex, periodStart), exactly like the member's
+  // own cuts, so the two can never be confused or double-spent.
+  planKind?: 'standard' | 'custom' | 'yearly';
   planPriceUsd?: number; // custom plan monthly price
   weeklyServices?: { serviceId: string; name: string; price: number }[]; // 4 entries, week 0..3
   weekAlertsSent?: string[]; // `${periodStart}#${weekIndex}` already notified
@@ -195,13 +215,16 @@ export interface MembershipRedemption extends TenantScoped {
   membershipId: string;
   customerId: string;
   barberId: string;
-  weekIndex: number; // 0..3 within the billing period
+  weekIndex: number; // window index within the billing period: 0..3 monthly · 0..47 yearly
   periodStart: string; // ISO of the billing period this redemption belongs to
   redeemedAt: string; // ISO
   bookingId?: string | null; // auto-linked booking that day, if any
   photoPath?: string | null; // proof-of-completion photo (camera) — required before payout
   payoutTransferId?: string | null; // Stripe Transfer ID for the barber's payout
   payoutFailed?: boolean; // payout attempt failed — retried automatically (see retryFailedPayouts)
+  guest?: boolean; // yearly-plan GUEST cut (free companion cut for this window).
+    // Missing/false = the member's own cut. Guest and member redemptions are
+    // separate records keyed by (weekIndex, periodStart, guest).
 }
 
 // In-app chat between customer and barber, one thread per booking.
@@ -316,6 +339,10 @@ export interface Customer extends TenantScoped {
   email: string; // lowercase, trimmed, unique
   passwordHash: string; // scrypt hash — never sent to clients
   createdAt: string;
+  // Session revocation version (audit M7): stamped into customer tokens as
+  // `av`; bumped on password change/reset so every other session dies.
+  // Missing on pre-fix records = 0.
+  authVersion?: number;
   stripeCustomerId?: string | null; // Stripe customer for saved payment methods
   photoPath?: string | null; // profile photo in Blob (served via /api/photos/)
   favoriteBarberId?: string | null; // barber the customer starred as favorite
@@ -350,6 +377,9 @@ export interface Review extends TenantScoped {
 export interface PinsDoc {
   ownerHash: string;
   barbers: Record<string, string>; // barberId -> bcrypt hash
+  // Owner session revocation version (audit M10): stamped into owner tokens
+  // as `av`. Missing on pre-fix records = 0.
+  authVersion?: number;
 }
 
 // Gift haircuts: a customer buys a full-price service as a gift for someone
@@ -366,6 +396,7 @@ export interface Gift extends TenantScoped {
   serviceId: string;
   serviceName: string;
   price: number;
+  cardFeeCents?: number | null; // card processing fee collected on the purchase (credit cards only); the gift's value/payout is always `price`, never price+fee
   status: GiftStatus;
   token: string;
   shortCode: string;

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
 import { getOrCreateTrainingPrice, saveTrainingSignup, TRAINING_WEEKLY_OPTIONS, type TrainingSignup, type TrainingWeeklyUsd } from '@/lib/training';
+import { rateLimitExceeded, clientIp } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,11 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: 'Payments are not configured yet.' }, { status: 503 });
+  }
+  // Audit L7 (2026-10-29): public endpoint creating Stripe customers +
+  // checkout sessions — throttle per IP on the shared limiter.
+  if (await rateLimitExceeded(`training-checkout:${clientIp(req)}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts. Please try again later.' }, { status: 429 });
   }
   let body: Record<string, unknown>;
   try {
@@ -25,11 +31,12 @@ export async function POST(req: Request) {
   const weeklyUsd: TrainingWeeklyUsd = (TRAINING_WEEKLY_OPTIONS as readonly unknown[]).includes(planRaw)
     ? (planRaw as TrainingWeeklyUsd)
     : 100;
-  const name = String(body.name ?? '').trim();
-  const email = String(body.email ?? '').trim().toLowerCase();
-  const phone = String(body.phone ?? '').trim();
-  const dob = String(body.dob ?? '').trim();
-  const address = String(body.address ?? '').trim();
+  // Audit L7: field length caps (the values are stored and shown to the owner).
+  const name = String(body.name ?? '').trim().slice(0, 80);
+  const email = String(body.email ?? '').trim().toLowerCase().slice(0, 120);
+  const phone = String(body.phone ?? '').trim().slice(0, 25);
+  const dob = String(body.dob ?? '').trim().slice(0, 10);
+  const address = String(body.address ?? '').trim().slice(0, 200);
 
   if (name.length < 2) return NextResponse.json({ error: 'Please enter your full name.' }, { status: 400 });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 });
@@ -57,7 +64,10 @@ export async function POST(req: Request) {
       name,
       email,
       phone,
-      metadata: { kind: 'training', signupId: signup.id, dob, address },
+      // Audit L7 (2026-10-29): date of birth and home address are personal
+      // data the shop keeps in its OWN signup record only — they are no
+      // longer copied into Stripe metadata.
+      metadata: { kind: 'training', signupId: signup.id },
     });
     signup.stripeCustomerId = customer.id;
     const priceId = await getOrCreateTrainingPrice(weeklyUsd);

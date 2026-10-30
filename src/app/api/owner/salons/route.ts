@@ -5,7 +5,8 @@ import {
   getBarbers, listBookings, inSalon,
   getBranches, saveBranches, newId,
 } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { geocodeAddress, hasCoords } from '@/lib/geocode';
 import { shopToday } from '@/lib/earnings';
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 // Super-admin: all registered salons, enriched with the stats needed to
 // triage requests. Pending first, then newest.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [salons, barbers, bookings] = await Promise.all([listSalons(), getBarbers(), listBookings()]);
   const today = shopToday();
   const enriched = await Promise.all(
@@ -44,7 +45,7 @@ type Action = 'approve' | 'suspend' | 'activate' | 'dismiss';
 
 // Super-admin: approve / suspend / activate / dismiss a salon.
 export async function POST(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const salonId = String(body?.salonId ?? '');
   const action = body?.action as Action | undefined;
@@ -123,6 +124,12 @@ export async function POST(req: Request) {
     }
     salon.status = 'suspended';
     await saveSalon(salon);
+    // Audit H6: suspension kills the salon owner's outstanding sessions.
+    const sOwner = await getSalonOwnerBySalon(salon.id);
+    if (sOwner) {
+      sOwner.authVersion = (sOwner.authVersion ?? 0) + 1;
+      await saveSalonOwner(sOwner);
+    }
   } else if (action === 'activate') {
     if (salon.status !== 'suspended') {
       return NextResponse.json({ error: 'Only suspended salons can be re-activated.' }, { status: 400 });

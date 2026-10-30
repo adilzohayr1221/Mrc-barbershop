@@ -1,36 +1,29 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
-import { getCustomer, deleteCustomer, getMembershipsByCustomer } from '@/lib/store';
-import { isStripeConfigured, getStripe } from '@/lib/stripe';
+
+import { requireActiveCustomer } from "@/lib/guard";
+import { getCustomer } from '@/lib/store';
+import { deleteCustomerAccountCompletely } from '@/lib/customerLifecycle';
 
 export const dynamic = 'force-dynamic';
 
 // Customer-initiated permanent account deletion (App Store guideline
 // 5.1.1(v): apps that support account creation must offer account
-// deletion). Any live plan is cancelled with Stripe first so a deleted
-// account is never charged again; then the customer record itself is
-// removed, which frees the email and ends every session's usefulness.
-// Past bookings remain in the shop's business records — the same rule the
-// owner-side customer deletion already follows.
+// deletion). Audit M7/M8 (2026-10-29): deletion now runs the complete
+// lifecycle — live plans are cancelled with Stripe first so a deleted
+// account is never charged again, the Stripe customer + saved payment
+// methods are dropped, personal photo blobs (profile, discount ID,
+// complaints), chat threads and push subscriptions are deleted, and the
+// email claim is released. Financial records (bookings, gifts,
+// memberships) are retained as business records — see the retention note
+// in lib/customerLifecycle.ts. Cancellation here is best-effort: the
+// deletion itself must still go through (App Store rule), and any
+// failure is logged server-side.
 export async function DELETE(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const c = await getCustomer(session.customerId);
   if (!c) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  try {
-    if (isStripeConfigured()) {
-      const memberships = await getMembershipsByCustomer(c.id);
-      for (const m of memberships) {
-        if (m.stripeSubscriptionId && (m.status === 'active' || m.status === 'past_due')) {
-          await getStripe().subscriptions.cancel(m.stripeSubscriptionId).catch(() => {});
-        }
-      }
-    }
-  } catch {
-    // Best effort only — the account deletion itself must still go through.
-  }
-
-  await deleteCustomer(c.id);
+  await deleteCustomerAccountCompletely(c, { failLoudly: false });
   return NextResponse.json({ ok: true });
 }

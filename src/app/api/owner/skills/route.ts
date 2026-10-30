@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+import { signPhotoUrl } from "@/lib/auth";
+import { requireActiveOwner } from "@/lib/guard";
 import { listSkillVerifications, getBarbers } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
 function photoUrlOf(path: string): string {
-  return `/api/photos/${encodeURIComponent(path.split('/').pop() || '')}`;
+  return signPhotoUrl(path.split('/').pop() || '');
 }
 
 // GET /api/owner/skills — all skill verification batches with barber names.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [vers, barbers] = await Promise.all([listSkillVerifications(), getBarbers()]);
   const nameOf = new Map(barbers.map((b) => [b.id, b.name]));
   return NextResponse.json({

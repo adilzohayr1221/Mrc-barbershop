@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getBarbers } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
 import { getStripe, isStripeConfigured, toCents } from '@/lib/stripe';
+import { rateLimitExceeded, clientIp } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ barberI
     return NextResponse.json({ error: 'Payments are not configured yet.' }, { status: 503 });
   }
   const { barberId } = await params;
+  // Audit M12 (2026-10-29): this endpoint is public and creates Stripe
+  // intents — throttle intent creation per barber + IP on the shared
+  // limiter (20 / 10 min is far above any real walk-in flow).
+  if (await rateLimitExceeded(`walkin-intent:${barberId}:${clientIp(req)}`, 20, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts. Please wait a few minutes and try again.' }, { status: 429 });
+  }
   const barbers = await getBarbers();
   const barber = barbers.find((b) => b.id === barberId);
   if (!barber || !barber.active || barber.approved === false || !barber.stripeAccountId) {

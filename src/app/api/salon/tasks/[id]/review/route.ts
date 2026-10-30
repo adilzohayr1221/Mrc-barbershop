@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getTask, saveTask, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
 // Salon owner: approve a barber's submitted photo proof, or reopen the task.
 // Only for tasks of my own salon. Body: { barberId, action: 'approve' | 'reopen' }
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const { id } = await params;

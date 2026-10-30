@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getServices, saveServices, newId } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import type { Service } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: list all services.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   return NextResponse.json({ services: await getServices() });
 }
 
 // Owner-only: add a service.
 export async function POST(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const name = String(body?.name || '').trim();
   const price = Number(body?.price);

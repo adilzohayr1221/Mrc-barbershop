@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import {
   getBooking, getRedemption, listTips, saveTip, newId, listBookings,
+  claimOnce, releaseClaim,
 } from '@/lib/store';
 import { getMembershipById } from '@/lib/membership';
 import { getStripe, isStripeConfigured, toCents } from '@/lib/stripe';
@@ -14,7 +16,7 @@ export const dynamic = 'force-dynamic';
 // The tip is charged off-session on the customer's saved card and 100% goes
 // to the barber immediately. One tip per haircut.
 export async function POST(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Please log in.' }, { status: 401 });
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: 'Payments are not configured.' }, { status: 503 });
@@ -102,6 +104,14 @@ export async function POST(req: Request) {
   if ((await listTips()).some((t) => t.source === source && t.sourceId === sourceId)) {
     return NextResponse.json({ error: 'You already tipped for this haircut. Thank you!' }, { status: 409 });
   }
+  // Audit M3 (2026-10-22): the scan above races — two simultaneous requests
+  // both pass it and double-charge. Claim the (source, sourceId) pair
+  // atomically BEFORE charging; release the claim if the charge fails so
+  // the customer can retry.
+  const tipClaimKey = `tip-${source}-${sourceId}`;
+  if (!(await claimOnce(tipClaimKey))) {
+    return NextResponse.json({ error: 'You already tipped for this haircut. Thank you!' }, { status: 409 });
+  }
 
   // Charge the tip off-session.
   let piId: string;
@@ -120,6 +130,7 @@ export async function POST(req: Request) {
       { idempotencyKey: `tip-${source}-${sourceId}` }
     );
     if (pi.status !== 'succeeded') {
+      await releaseClaim(tipClaimKey);
       return NextResponse.json(
         { error: 'The card needs you to approve this charge. Tip in cash instead.' },
         { status: 402 }
@@ -127,6 +138,7 @@ export async function POST(req: Request) {
     }
     piId = pi.id;
   } catch (e) {
+    await releaseClaim(tipClaimKey);
     console.error('[tip] charge failed', e);
     const code = (e as { code?: string })?.code;
     return NextResponse.json(
@@ -156,7 +168,10 @@ export async function POST(req: Request) {
   try {
     const { payoutToBarber } = await import('@/lib/payouts');
     const result = await payoutToBarber(barberId, tipAmount, {
-      idempotencyKey: `payout-tip-${tip.id}`,
+      // Deterministic per haircut (audit M3): the retry sweep derives the
+      // same key from (source, sourceId), so a lost response can never
+      // produce a second, differently-keyed transfer.
+      idempotencyKey: `payout-tip-${source}-${sourceId}`,
       description: `MRC Barbershops — customer tip ($${tipAmount.toFixed(2)})`,
       metadata: { kind: 'tip_payout', tipId: tip.id },
     });

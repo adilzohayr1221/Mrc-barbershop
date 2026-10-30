@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
-import { getComp, saveComp, getCustomers } from '@/lib/store';
+import { requireActiveBarber } from '@/lib/guard';
+import { getComp, saveComp, getCustomers, salonOf } from '@/lib/store';
+import { barberSalonId } from '@/lib/salonScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
 // pays nothing AND the barber gets no payout (the owner decided the redo is
 // unpaid). Redeeming only marks the code used; no Stripe transfer happens.
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -29,6 +30,10 @@ export async function POST(req: Request) {
   }
   if (comp.status === 'redeemed') {
     return NextResponse.json({ error: 'This free haircut was already used.' }, { status: 410 });
+  }
+  // Audit M10 (2026-10-22): a comp can only be redeemed inside its own salon.
+  if (salonOf(comp) !== (await barberSalonId(session))) {
+    return NextResponse.json({ error: 'This code belongs to a different salon.' }, { status: 403 });
   }
 
   if (preview) {
@@ -53,12 +58,11 @@ export async function POST(req: Request) {
   // The customer loyalty counter does NOT move (the haircut was free).
   try {
     const { recordHaircut } = await import('@/lib/loyalty');
-    const { sessionSalonId } = await import('@/lib/auth');
     await recordHaircut({
       barberId: session.barberId,
       customerId: comp.customerId,
       paid: false,
-      salonId: sessionSalonId(session),
+      salonId: salonOf(comp),
     });
   } catch (e) {
     console.error('[comps/redeem] loyalty hook failed', e);

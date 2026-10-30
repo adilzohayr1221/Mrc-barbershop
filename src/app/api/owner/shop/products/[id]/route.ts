@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getShopProduct, saveShopProduct, deleteShopProduct } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
 // Owner: mark a product in/out of stock. Body: { inStock: boolean }.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const product = await getShopProduct(id);
   if (!product) return NextResponse.json({ error: 'Product not found.' }, { status: 404 });
@@ -21,7 +22,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 // Owner: remove a product from the shop (orders already placed are kept).
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const product = await getShopProduct(id);
   if (!product) return NextResponse.json({ error: 'Product not found.' }, { status: 404 });

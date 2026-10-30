@@ -1,11 +1,22 @@
 // First-run seeding. Branches are the ONLY invented data — everything else
 // (barbers, services, prices, reviews) is added by the owner in the dashboard.
-// The owner PIN hash below is the bcrypt hash of the owner-chosen PIN;
-// the plaintext PIN never appears in this codebase.
+// The plaintext owner PIN never appears in this codebase.
+//
+// Audit H8 (2026-10-22): the seeded owner PIN hash now comes from the
+// OWNER_PIN_HASH environment variable when set. The literal below is a
+// LEGACY FALLBACK kept only so an existing install can never be locked out:
+// production's data/pins.json was seeded long ago and is never re-seeded,
+// so this value is not what production verifies against. FLAGGED for the
+// owner: rotate the PIN, set OWNER_PIN_HASH in the deployment env, then
+// delete the fallback literal.
 import { getDoc, putDoc } from './blob';
 import type { Branch, PinsDoc } from './types';
 
-const OWNER_PIN_HASH = '$2b$10$n6zG.SoUYMHzn9tcPIGpyuntZCEiW02C8ZJ8z4cQ/ADjaIaATeXA2';
+const LEGACY_OWNER_PIN_HASH_FALLBACK = '$2b$10$n6zG.SoUYMHzn9tcPIGpyuntZCEiW02C8ZJ8z4cQ/ADjaIaATeXA2';
+
+function ownerPinHash(): string {
+  return process.env.OWNER_PIN_HASH || LEGACY_OWNER_PIN_HASH_FALLBACK;
+}
 
 const SEED_BRANCHES: Branch[] = [
   {
@@ -35,7 +46,7 @@ export function ensureSeeded(): Promise<void> {
       await putDoc('data/branches.json', SEED_BRANCHES);
       await putDoc('data/barbers.json', []);
       await putDoc('data/services.json', []);
-      const pins: PinsDoc = { ownerHash: OWNER_PIN_HASH, barbers: {} };
+      const pins: PinsDoc = { ownerHash: ownerPinHash(), barbers: {} };
       await putDoc('data/pins.json', pins);
     })().catch((e) => {
       seeded = null;

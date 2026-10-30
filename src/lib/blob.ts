@@ -58,6 +58,40 @@ export async function putDoc(path: string, data: unknown): Promise<void> {
   });
 }
 
+/** Create-if-absent write (audit H1): writes the doc ONLY when the path does
+ *  not exist yet. Returns true when this call created it, false when a blob
+ *  already existed there. Vercel Blob `put` with allowOverwrite:false throws
+ *  on an existing pathname, and put() is strongly consistent for existence —
+ *  unlike getDoc/head reads, which can serve a CDN-cached copy for up to
+ *  cacheControlMaxAge. That makes this the atomic primitive for claims and
+ *  counters: two racers can both pass a check-then-write, but only one can
+ *  win a create-only put at the same path. */
+export async function putDocCreateOnly(path: string, data: unknown): Promise<boolean> {
+  ensureConfigured();
+  try {
+    await put(path, JSON.stringify(data), {
+      ...oidcOpts(),
+      access: 'private',
+      contentType: 'application/json',
+      allowOverwrite: false,
+      addRandomSuffix: false,
+      cacheControlMaxAge: 60,
+    });
+    return true;
+  } catch {
+    // A conflict means the blob already exists. Any OTHER failure (network,
+    // config) must not masquerade as "already claimed" — confirm existence
+    // via head() (metadata reads are not CDN-cached the way downloads are)
+    // and rethrow when the path is genuinely absent.
+    try {
+      await head(path, oidcOpts());
+      return false;
+    } catch {
+      throw new Error(`putDocCreateOnly failed for ${path}`);
+    }
+  }
+}
+
 /** List pathnames under a prefix. */
 export async function listDocs(prefix: string): Promise<string[]> {
   ensureConfigured();

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listMemberships, saveMembership, listRedemptions } from '@/lib/store';
 import { syncMembershipFromStripe, buildWeeks, membershipPlanName } from '@/lib/membership';
 import { sendPushToUser, isPushConfigured } from '@/lib/push';
+import { secretMatches } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 // Sent once per week per plan (weekAlertsSent flags on the membership).
 export async function POST(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('x-cron-secret') !== secret) {
+  if (!secretMatches(req.headers.get('x-cron-secret'), secret)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!isPushConfigured()) {

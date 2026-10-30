@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import { isStripeConfigured, getStripe } from '@/lib/stripe';
 import { ensureStripeCustomer, customPlanPrice } from '@/lib/membership';
 import { discountPrice } from '@/lib/discount';
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: 'Payments are not configured yet.' }, { status: 503 });
   }
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Please log in.' }, { status: 401 });
   }

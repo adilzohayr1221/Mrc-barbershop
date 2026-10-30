@@ -14,6 +14,7 @@ import { TasksTab } from '@/components/TasksTab';
 import BonusesTab from '@/components/BonusesTab';
 import { Leaderboard } from '@/components/Leaderboard';
 import type { Barber, Service, Review, Branch, Booking, WorkingHours, Salon } from '@/lib/types';
+import { formatDateUS, formatPhoneUS, formatTime12h } from '@/lib/format';
 
 import { authHeaders } from './auth';
 import { DiscountsTab } from './discounts-tab';
@@ -66,6 +67,7 @@ interface FullBooking extends Booking {
   serviceName: string;
   branchAddress: string;
   customerEmail?: string | null;
+  customerPhotoUrl?: string | null;
 }
 interface BarberAdmin extends Barber {
   photoUrl: string | null;
@@ -87,9 +89,13 @@ interface PlanRow {
   currentPeriodStart: string;
   currentPeriodEnd: string;
   weeksUsed: number;
+  totalWeeks?: number;
   createdAt: string;
   planName?: string;
   planPrice?: number;
+  planInterval?: 'month' | 'year';
+  guestWeeksUsed?: number;
+  guestSlotState?: string | null;
 }
 
 interface CustomerRow {
@@ -97,6 +103,29 @@ interface CustomerRow {
   name: string;
   email: string;
   createdAt: string;
+}
+
+// Customer face on booking cards: his photo when he has one, otherwise a
+// colored circle with his initial (stable color per name) — the same
+// treatment as the barber's work-history, so customers are recognized fast.
+const AVATAR_COLORS = ['#b45309', '#0f766e', '#1d4ed8', '#be185d', '#7c3aed', '#15803d', '#c2410c', '#0369a1'];
+function avatarColorFor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function CustomerAvatar({ name, photoUrl }: { name: string; photoUrl?: string | null }) {
+  if (photoUrl) {
+    return <img src={photoUrl} alt={name} className="w-9 h-9 rounded-full object-cover shrink-0 border border-gold/40" />;
+  }
+  return (
+    <div
+      className="w-9 h-9 rounded-full flex items-center justify-center font-extrabold text-white shrink-0 text-[15px]"
+      style={{ background: avatarColorFor(name) }}
+    >
+      {(name || '?').trim().charAt(0).toUpperCase()}
+    </div>
+  );
 }
 
 // Compact read-only summary
@@ -340,19 +369,29 @@ function BookingsTab({ bookings, setBookings }: { bookings: FullBooking[]; setBo
       {bookings.map((b) => b.status !== 'booked' ? (
         <div key={b.id} className="card p-4 opacity-55">
           <div className="flex justify-between items-center gap-2">
-            <b className="text-[15px] text-neutral-500 line-through">{b.customerName}</b>
+            <span className="flex items-center gap-2 min-w-0">
+              <CustomerAvatar name={b.customerName} photoUrl={b.customerPhotoUrl} />
+              <b className="text-[15px] text-neutral-500 line-through">{b.customerName}</b>
+            </span>
             <span className="flex items-center gap-2 shrink-0">
-              <span className="chip !text-neutral-500">{b.date} · {b.time}</span>
+              <span className="chip !text-neutral-500">{formatDateUS(b.date)} · {formatTime12h(b.time)}</span>
               {b.status === 'cancelled' ? <CancelledLabel /> : <NoShowLabel />}
             </span>
           </div>
-          <div className="text-sm text-neutral-400 mt-1.5">
-            {b.serviceName} with {b.barberName} · {b.customerPhone}
+          <div className="text-sm text-neutral-400 mt-1.5 space-y-0.5">
+            <div>Service: {b.serviceName}</div>
+            <div>Barber: {b.barberName}</div>
+            {b.customerPhone && <div>Phone: {formatPhoneUS(b.customerPhone)}</div>}
           </div>
           {b.customerEmail && <div className="text-xs text-neutral-400">{b.customerEmail}</div>}
           <div className="text-xs text-neutral-400 mt-0.5">{b.houseCall ? `🏠 VIP home visit — ${b.homeAddress ?? ''}` : b.branchAddress}</div>
           {b.status === 'no_show' && (
             <div className="text-xs text-amber-700 font-medium mt-1">Deposit kept — not refunded.</div>
+          )}
+          {b.refundError && (
+            <div className="text-xs text-red-700 font-bold mt-1.5 bg-red-50 border border-red-300 rounded-lg px-2 py-1.5">
+              ⚠️ Refund FAILED — {b.refundError} Re-cancelling this booking retries the refund.
+            </div>
           )}
           <div className="mt-1">
             <DeleteBookingButton bookingId={b.id} getToken={ownerToken} onDeleted={() => removeLocal(b.id)} />
@@ -361,12 +400,17 @@ function BookingsTab({ bookings, setBookings }: { bookings: FullBooking[]; setBo
       ) : (
         <div key={b.id} className="card p-4">
           <div className="flex justify-between items-center gap-2">
-            <b className="text-[15px]">{b.customerName}</b>
-            <span className="chip shrink-0">{b.date} · {b.time}</span>
+            <span className="flex items-center gap-2 min-w-0">
+              <CustomerAvatar name={b.customerName} photoUrl={b.customerPhotoUrl} />
+              <b className="text-[15px]">{b.customerName}</b>
+            </span>
+            <span className="chip shrink-0">{formatDateUS(b.date)} · {formatTime12h(b.time)}</span>
           </div>
           {b.customerEmail && <div className="text-xs text-neutral-500 mt-0.5">{b.customerEmail}</div>}
-          <div className="text-sm text-neutral-600 mt-1.5">
-            {b.serviceName} with {b.barberName} · {b.customerPhone}
+          <div className="text-sm text-neutral-600 mt-1.5 space-y-0.5">
+            <div><span className="text-neutral-400">Service:</span> {b.serviceName}</div>
+            <div><span className="text-neutral-400">Barber:</span> {b.barberName}</div>
+            {b.customerPhone && <div><span className="text-neutral-400">Phone:</span> {formatPhoneUS(b.customerPhone)}</div>}
           </div>
           <div className="text-xs text-neutral-600 mt-0.5">{b.houseCall ? `🏠 VIP home visit — ${b.homeAddress ?? ''}${(b.vipPeople ?? 1) > 1 ? ` · ${b.vipPeople} people` : ''}` : b.branchAddress}</div>
           {b.houseCall && b.visitNotes && (
@@ -1492,7 +1536,7 @@ function PlansTab({ plans }: { plans: PlanRow[] }) {
       <div className="card p-10 text-center fade-in">
         <p className="font-bold text-[16px]">No plan members yet</p>
         <p className="text-sm text-neutral-600 mt-1.5 leading-relaxed max-w-xs mx-auto">
-          When customers subscribe to the $120/month plan, they appear here.
+          When customers subscribe to a plan, they appear here.
         </p>
       </div>
     );
@@ -1503,8 +1547,8 @@ function PlansTab({ plans }: { plans: PlanRow[] }) {
   return (
     <div className="grid gap-2.5 fade-in">
       <div className="card p-4">
-        <b className="text-[15px]">Monthly Haircut Plan</b>
-        <p className="text-xs text-neutral-500 mt-0.5">$120/month · 4 haircuts, one per week</p>
+        <b className="text-[15px]">Haircut Plans</b>
+        <p className="text-xs text-neutral-500 mt-0.5">$120/month or $1,300/year · one haircut per week · yearly includes a free guest cut weekly</p>
         <div className="grid grid-cols-3 gap-2 mt-3 text-center">
           <div className="rounded-xl bg-[#f7f2e2] border border-[#e6dabf] py-2.5">
             <b className="text-gold text-[20px] block">{plans.length}</b>
@@ -1538,12 +1582,18 @@ function PlansTab({ plans }: { plans: PlanRow[] }) {
           </div>
           <p className="text-sm text-neutral-600 truncate mt-0.5">{p.customerEmail}</p>
           {p.planName && (
-            <p className="text-xs font-bold text-gold mt-1">{p.planName}{p.planPrice ? ` · $${p.planPrice}/mo` : ''}</p>
+            <p className="text-xs font-bold text-gold mt-1">{p.planName}{p.planPrice ? ` · $${p.planPrice}${p.planInterval === 'year' ? '/yr' : '/mo'}` : ''}</p>
           )}
           <p className="text-xs text-neutral-500 mt-1.5">
-            Haircuts used this period: <b className="text-gold">{p.weeksUsed}/4</b>
+            Haircuts used this period: <b className="text-gold">{p.weeksUsed}/{p.totalWeeks ?? 4}</b>
             {' · '}renews {fmtDay(p.currentPeriodEnd)}
           </p>
+          {p.planInterval === 'year' && (
+            <p className="text-xs text-neutral-500 mt-1">
+              Guest cuts used: <b className="text-gold">{p.guestWeeksUsed ?? 0}/{p.totalWeeks ?? 48}</b>
+              {p.guestSlotState ? ` · this week's guest: ${p.guestSlotState}` : ''}
+            </p>
+          )}
         </div>
       ))}
     </div>

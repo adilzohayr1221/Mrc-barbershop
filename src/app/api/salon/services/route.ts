@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServices, saveServices, newId, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 import type { Service } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 // Salon-owner: list services of HIS salon.
 export async function GET(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const services = (await getServices()).filter((s) => inSalon(s, salonId));
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
 
 // Salon-owner: add a service to HIS salon.
 export async function POST(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const body = await req.json().catch(() => null);

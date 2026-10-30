@@ -1,30 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getSalonOwnerByEmail, getSalon } from '@/lib/store';
 import { signSession, verifyPassword, isValidEmail } from '@/lib/auth';
+import { rateLimitExceeded, clientIp } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
-// Simple in-memory throttle: 8 attempts / 5 min per IP.
-const attempts = new Map<string, { count: number; resetAt: number }>();
-function throttled(ip: string): boolean {
-  const now = Date.now();
-  const rec = attempts.get(ip);
-  if (!rec || rec.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 5 * 60 * 1000 });
-    return false;
-  }
-  rec.count += 1;
-  return rec.count > 8;
-}
+// Audit M11 (2026-10-29): shared-store throttle, per-account (IP + email)
+// with a per-IP cap — replaces the per-instance in-memory map.
+const WINDOW_MS = 5 * 60 * 1000;
 
 // Public: salon-owner login (email + password). The salon must be approved
 // (status 'active') and the owner account activated — otherwise 403.
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  if (throttled(ip)) return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
-
   const body = await req.json().catch(() => null);
   const { email, password } = body ?? {};
+  const ip = clientIp(req);
+  const accountKey = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const [overIp, overAccount] = await Promise.all([
+    rateLimitExceeded(`salon-owner-auth-ip:${ip}`, 30, WINDOW_MS),
+    rateLimitExceeded(`salon-owner-auth:${ip}:${accountKey}`, 10, WINDOW_MS),
+  ]);
+  if (overIp || overAccount) return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
   if (!isValidEmail(email) || typeof password !== 'string' || !password.length) {
     return NextResponse.json({ error: 'Invalid credentials.' }, { status: 401 });
   }
@@ -40,7 +36,7 @@ export async function POST(req: Request) {
     );
   }
   return NextResponse.json({
-    token: signSession('salon_owner', owner.id, owner.salonId),
+    token: signSession('salon_owner', owner.id, owner.salonId, owner.authVersion ?? 0),
     salonName: salon.name,
   });
 }

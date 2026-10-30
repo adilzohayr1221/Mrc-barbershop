@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 import { getShopOrder, saveShopOrder } from '@/lib/store';
 import { getStripe } from '@/lib/stripe';
 import { sendPushToUser } from '@/lib/push';
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
 // - confirmed + earnings → voided; whatever was already deducted from
 //   payouts stays deducted, the rest is forgiven.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const order = await getShopOrder(id);
   if (!order) return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
@@ -22,7 +23,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let refunded = false;
   if (order.payMethod === 'card' && order.paymentIntentId) {
     try {
-      await getStripe().refunds.create({ payment_intent: order.paymentIntentId });
+      // Audit M1 (2026-10-22): idempotency-keyed so a retried cancel can
+      // never refund twice.
+      await getStripe().refunds.create(
+        { payment_intent: order.paymentIntentId },
+        { idempotencyKey: `refund-shop-order-${order.id}` }
+      );
       refunded = true;
     } catch (e) {
       console.error('[shop] owner refund failed', order.id, e);

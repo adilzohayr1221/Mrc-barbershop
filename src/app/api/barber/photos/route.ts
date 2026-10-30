@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
-import { listWorkPhotos, saveWorkPhoto, newId, savePhoto } from '@/lib/store';
+import { listWorkPhotos, saveWorkPhoto, newId, savePhoto, sniffImageType } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ function photoUrlOf(p: { photoPath: string }): string {
 
 // GET /api/barber/photos → the barber's own work photos (with status).
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const all = await listWorkPhotos();
   const mine = all
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 
 // POST /api/barber/photos → upload a work photo (goes to "pending", owner must approve).
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const form = await req.formData().catch(() => null);
@@ -34,17 +34,17 @@ export async function POST(req: Request) {
   if (ab.byteLength > 5 * 1024 * 1024) {
     return NextResponse.json({ error: 'Photo is too large (max 5MB).' }, { status: 400 });
   }
-  const type = photo.type || 'image/jpeg';
-  if (!type.startsWith('image/')) {
+  // Audit M13: sniff the real image type from the bytes.
+  const sniffed = sniffImageType(Buffer.from(ab));
+  if (!sniffed) {
     return NextResponse.json({ error: 'File must be an image.' }, { status: 400 });
   }
   const mine = (await listWorkPhotos()).filter((p) => p.barberId === session.barberId);
   if (mine.length >= 20) {
     return NextResponse.json({ error: 'You can upload up to 20 photos.' }, { status: 400 });
   }
-  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
   const id = newId();
-  const path = await savePhoto(`work-${session.barberId}-${id}.${ext}`, Buffer.from(ab), type);
+  const path = await savePhoto(`work-${session.barberId}-${id}.${sniffed.ext}`, Buffer.from(ab), sniffed.mime);
   await saveWorkPhoto({
     id,
     barberId: session.barberId,

@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
-import { listShopProducts, saveShopProduct, savePhoto, newId } from '@/lib/store';
+
+import { requireActiveOwner } from "@/lib/guard";
+import { listShopProducts, saveShopProduct, savePhoto, newId, sniffImageType } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
 // Owner: list all supply-shop products.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   return NextResponse.json({ products: await listShopProducts() });
 }
 
 // Owner: add a supply product (multipart: photo?, name, description, price).
 export async function POST(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const form = await req.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: 'Invalid form.' }, { status: 400 });
   const name = String(form.get('name') || '').trim().slice(0, 80);
@@ -26,15 +27,16 @@ export async function POST(req: Request) {
   const id = newId();
   const photo = form.get('photo');
   if (photo && typeof photo !== 'string') {
-    if (!photo.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'Photo must be an image.' }, { status: 400 });
-    }
     const buf = Buffer.from(await photo.arrayBuffer());
     if (buf.byteLength > 5 * 1024 * 1024) {
       return NextResponse.json({ error: 'Photo is too large (max 5MB).' }, { status: 400 });
     }
-    const ext = photo.type.includes('png') ? 'png' : photo.type.includes('webp') ? 'webp' : 'jpg';
-    photoPath = await savePhoto(`shop-product-${id}.${ext}`, buf, photo.type || 'image/jpeg');
+    // Audit M13: sniff the real image type from the bytes.
+    const sniffed = sniffImageType(buf);
+    if (!sniffed) {
+      return NextResponse.json({ error: 'Photo must be an image.' }, { status: 400 });
+    }
+    photoPath = await savePhoto(`shop-product-${id}.${sniffed.ext}`, buf, sniffed.mime);
   }
   const product = {
     id,

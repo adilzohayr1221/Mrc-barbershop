@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
+import { requireActiveCustomer } from "@/lib/guard";
 import {
   getBooking, getRedemption, getGift, getBarbers, getServices,
   listTips,
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
 // Resolves a completed haircut for the "How was your haircut?" page:
 // who cut it, what service, and whether a tip can be charged.
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Please log in.' }, { status: 401 });
   const ref = new URL(req.url).searchParams.get('ref') || '';
   const [kind, id] = ref.split(':');

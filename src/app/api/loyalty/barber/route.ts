@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
-import { getBarberMilestone } from '@/lib/store';
-import { BONUS_10_AT, BONUS_10_USD, BONUS_100_AT, BONUS_100_USD } from '@/lib/loyalty';
+import { requireActiveBarber } from '@/lib/guard';
+import { BONUS_10_AT, BONUS_10_USD, BONUS_100_AT, BONUS_100_USD, healedBarberMilestone } from '@/lib/loyalty';
 
 export const dynamic = 'force-dynamic';
 
 // Barber's milestone progress: haircuts done, $100/$500 bonus states.
 export async function GET(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const m = await getBarberMilestone(session.barberId);
+  const m = await healedBarberMilestone(session.barberId);
   return NextResponse.json({
     ok: true,
     milestone: {

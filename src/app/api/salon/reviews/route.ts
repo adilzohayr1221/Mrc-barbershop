@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getBarbers, listReviews, inSalon } from '@/lib/store';
-import { requireSalonOwner, sessionSalonId } from '@/lib/auth';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveSalonOwner } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
 // Salon-owner: reviews written about HIS salon's barbers.
 export async function GET(req: Request) {
-  const session = requireSalonOwner(req);
+  const session = await requireActiveSalonOwner(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const salonId = sessionSalonId(session);
   const [barbers, reviews] = await Promise.all([getBarbers(), listReviews()]);

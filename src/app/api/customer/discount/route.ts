@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
-import { getCustomer, saveCustomer, savePhoto } from '@/lib/store';
+
+import { requireActiveCustomer } from "@/lib/guard";
+import { getCustomer, saveCustomer, savePhoto, sniffImageType, deletePhoto } from '@/lib/store';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/customer/discount — the customer's own discount request/status.
 export async function GET(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const customer = await getCustomer(session.customerId);
   if (!customer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
 // formData: type ('student'|'military'), photo (ID image, max 5MB).
 // The request goes to "pending"; the owner approves or rejects it.
 export async function POST(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session?.customerId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const customer = await getCustomer(session.customerId);
   if (!customer) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -43,12 +44,13 @@ export async function POST(req: Request) {
   if (ab.byteLength > 5 * 1024 * 1024) {
     return NextResponse.json({ error: 'Photo is too large (max 5MB).' }, { status: 400 });
   }
-  const mime = photo.type || 'image/jpeg';
-  if (!mime.startsWith('image/')) {
+  // Audit M13: sniff the real image type from the bytes.
+  const sniffed = sniffImageType(Buffer.from(ab));
+  if (!sniffed) {
     return NextResponse.json({ error: 'File must be an image.' }, { status: 400 });
   }
-  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-  const path = await savePhoto(`discount-${customer.id}-${Date.now()}.${ext}`, Buffer.from(ab), mime);
+  const previousPhotoPath = customer.discount?.photoPath;
+  const path = await savePhoto(`discount-${customer.id}-${Date.now()}.${sniffed.ext}`, Buffer.from(ab), sniffed.mime);
 
   customer.discount = {
     type,
@@ -58,5 +60,8 @@ export async function POST(req: Request) {
     decidedAt: null,
   };
   await saveCustomer(customer);
+  // Audit L9 (2026-10-29): a re-request (after a rejection) replaces the
+  // ID photo — delete the old blob instead of orphaning it.
+  if (previousPhotoPath && previousPhotoPath !== path) await deletePhoto(previousPhotoPath);
   return NextResponse.json({ ok: true, status: 'pending' });
 }

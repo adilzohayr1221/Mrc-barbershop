@@ -1,7 +1,7 @@
 // Data access layer over Vercel Blob JSON docs.
 // SECURITY: this module is server-only. Callers (API routes) enforce auth
 // BEFORE reading anything that contains customer PII.
-import { getDoc, putDoc, listDocs, delDoc, putBinary, getBinary } from './blob';
+import { getDoc, putDoc, putDocCreateOnly, listDocs, delDoc, putBinary, getBinary } from './blob';
 import { ensureSeeded } from './seed';
 import type { Branch, Barber, Service, Booking, BookingStatus, Review, PinsDoc, PublicBarber, Customer, Membership, MembershipRedemption, PushSubscriptionDoc, ChatDoc, ChatMessage, ChatMeta, Gift, TeamChatDoc, WorkPhoto, Complaint, Comp, Tip, WalkinPayment, SkillVerification, ShopProduct, ShopOrder, PartnerLead, Salon, SalonOwner, TenantScoped, SalonTask, BarberMilestone, CustomerLoyalty, LoyaltyReward } from './types';
 import { PLATFORM_SALON_ID } from './types';
@@ -66,7 +66,7 @@ export async function getBooking(id: string): Promise<Booking | null> {
  *  (pre-account bookings have none). */
 function withStatus(b: Booking): Booking {
   const s = (b as { status?: unknown }).status;
-  const status: BookingStatus = s === 'cancelled' ? 'cancelled' : 'booked';
+  const status: BookingStatus = s === 'cancelled' || s === 'no_show' ? s : 'booked';
   const c = (b as { customerId?: unknown }).customerId;
   const customerId: string | null = typeof c === 'string' && c ? c : null;
   return status === b.status && customerId === b.customerId ? b : { ...b, status, customerId };
@@ -173,8 +173,120 @@ export async function getPhoto(name: string) {
   return getBinary(P.photo(safe));
 }
 
+/** Delete a photo blob (audit L9/M8). Accepts either a stored photoPath
+ *  (`photos/<name>`) or a bare file name. Best-effort: a missing blob is not
+ *  an error. */
+export async function deletePhoto(pathOrName: string): Promise<void> {
+  const raw = pathOrName.startsWith('photos/') ? pathOrName.slice('photos/'.length) : pathOrName;
+  const safe = raw.replace(/[^a-zA-Z0-9._-]/g, '');
+  if (!safe) return;
+  try {
+    await delDoc(P.photo(safe));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Strip the fields a booking payload must never leak to staff list views
+ *  (audit M13): the single-use collect token and every Stripe identifier.
+ *  Shared by the salon-owner and super-owner booking lists; mirrors the
+ *  barber-schedule strip list. */
+export function stripBookingSecrets(
+  b: Booking
+): Omit<Booking, 'collectToken' | 'collectTokenExpiry' | 'stripeCustomerId' | 'stripePaymentMethodId' | 'paymentIntentId' | 'remainingPaymentIntentId' | 'refundedLegs'> {
+  const { collectToken: _ct, collectTokenExpiry: _cte, stripeCustomerId: _sc, stripePaymentMethodId: _spm, paymentIntentId: _pi, remainingPaymentIntentId: _rpi, refundedLegs: _rl, ...rest } = b;
+  return rest;
+}
+
 export function newId(): string {
   return randomUUID();
+}
+
+// ---------------------------------------------------------------------------
+// One-shot claims (audit H1/H2/M3/M4, 2026-10-22): a "this key was already
+// consumed" marker stored as its own small doc (data/claims/<key>.json) so
+// concurrent serverless invocations can't both spend the same Stripe
+// payment, tip source, walk-in payment or booking slot twice. Claims are
+// taken BEFORE the side effect; when the side effect fails the claim is
+// released so a legitimate retry can proceed. An existing claim = consumed.
+// ---------------------------------------------------------------------------
+
+function claimPath(key: string): string {
+  return `data/claims/${key.replace(/[^a-zA-Z0-9._-]/g, '_')}.json`;
+}
+
+/** Returns true when the caller won the claim (first consumer), false when
+ *  the key was already claimed.
+ *  Audit H1 fix (2026-10-29): the old check-then-write raced — getDoc reads
+ *  can be CDN-stale for up to 60s, so two concurrent invocations could both
+ *  see "unclaimed" and both spend. Claims are now create-only puts at the
+ *  SAME path (backward compatible with in-flight claims: an existing claim
+ *  doc still reads as claimed, and a lost create race returns false). */
+export async function claimOnce(key: string): Promise<boolean> {
+  return putDocCreateOnly(claimPath(key), { at: new Date().toISOString() });
+}
+
+/** Like claimOnce, but a claim older than `staleMs` may be taken over
+ *  (audit M2: remainder-charge claims only). Protects against a claim left
+ *  behind by a crashed invocation permanently blocking the auto-collect
+ *  sweep for that booking. Takeover re-stamps the claim doc; the loser of a
+ *  takeover race still sees the fresh stamp and backs off. */
+export async function claimOnceStale(key: string, staleMs: number): Promise<boolean> {
+  const path = claimPath(key);
+  if (await putDocCreateOnly(path, { at: new Date().toISOString() })) return true;
+  const existing = await getDoc<{ at: string }>(path);
+  if (!existing?.at) return false;
+  const age = Date.now() - new Date(existing.at).getTime();
+  if (!Number.isFinite(age) || age < staleMs) return false;
+  await putDoc(path, { at: new Date().toISOString(), stolenFrom: existing.at });
+  return true;
+}
+
+/** Claim key for the atomic signup email reservation (audit M11). The
+ *  account-deletion path releases it so a deleted email can sign up again. */
+export function signupEmailClaimKey(email: string): string {
+  return `signup-email-${Buffer.from(email.trim().toLowerCase(), 'utf8').toString('base64url')}`;
+}
+
+/** Undo a claim after a failed side effect so a retry is allowed. */
+export async function releaseClaim(key: string): Promise<void> {
+  try {
+    await delDoc(claimPath(key));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Read-only check whether a key was already claimed (no write). */
+export async function isClaimed(key: string): Promise<boolean> {
+  return (await getDoc<{ at: string }>(claimPath(key))) !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Image sniffing (audit M13, 2026-10-22): never trust the client-supplied
+// MIME type. Detect JPEG/PNG/WebP from the magic bytes; anything else is
+// rejected and the stored Content-Type comes from the sniffed type.
+// ---------------------------------------------------------------------------
+
+export function sniffImageType(buf: Buffer): { ext: string; mime: string } | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return { ext: 'jpg', mime: 'image/jpeg' };
+  }
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) {
+    return { ext: 'png', mime: 'image/png' };
+  }
+  if (
+    buf.length >= 12 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' &&
+    buf.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return { ext: 'webp', mime: 'image/webp' };
+  }
+  return null;
 }
 
 // Proof-of-completion photo for barber payouts (like DoorDash proof-of-delivery).
@@ -185,15 +297,18 @@ export async function saveCompletionPhoto(form: FormData, prefix: string): Promi
   if (!photo || typeof photo === 'string') {
     throw new Error('Take a photo of the finished haircut to get paid.');
   }
-  if (!photo.type.startsWith('image/')) {
-    throw new Error('That file is not an image.');
-  }
   const buf = Buffer.from(await photo.arrayBuffer());
   if (buf.byteLength > 5 * 1024 * 1024) {
     throw new Error('Photo is too large (max 5MB).');
   }
-  const ext = photo.type.includes('png') ? 'png' : photo.type.includes('webp') ? 'webp' : 'jpg';
-  return savePhoto(`${prefix}-${newId()}.${ext}`, buf, photo.type || 'image/jpeg');
+  // Audit M13: sniff the real type from the bytes — the client-supplied
+  // MIME type is not trusted (a mislabelled file must not be stored/served
+  // as an image).
+  const sniffed = sniffImageType(buf);
+  if (!sniffed) {
+    throw new Error('That file is not an image.');
+  }
+  return savePhoto(`${prefix}-${newId()}.${sniffed.ext}`, buf, sniffed.mime);
 }
 
 /** Monthly plan memberships. One doc per membership: `data/memberships/<id>.json`. */
@@ -265,6 +380,18 @@ export async function listRedemptions(membershipId: string): Promise<MembershipR
   return out;
 }
 
+/** Every redemption across all memberships (photo-scope resolution, sweeps). */
+export async function listAllRedemptions(): Promise<MembershipRedemption[]> {
+  const paths = await listDocs(REDEMPTION_PREFIX);
+  const out: MembershipRedemption[] = [];
+  for (const p of paths) {
+    if (!p.endsWith('.json')) continue;
+    const r = await getDoc<MembershipRedemption>(p);
+    if (r && typeof r.id === 'string') out.push(r);
+  }
+  return out;
+}
+
 /** Build the public-safe barber list (no PII, no PINs). Pending self-signups are excluded. */
 export async function getPublicBarbers(branchId?: string, salonId?: string): Promise<PublicBarber[]> {
   const [barbers, reviews, workPhotos] = await Promise.all([getBarbers(), listReviews(), listWorkPhotos()]);
@@ -324,6 +451,41 @@ export async function deletePushSubscriptionByEndpoint(endpoint: string): Promis
   }
 }
 
+/** Remove one subscription doc by id (audit M8: account deletion cleanup). */
+export async function deletePushSubscription(id: string): Promise<void> {
+  if (!/^[a-zA-Z0-9-]+$/.test(id)) return;
+  try {
+    await delDoc(pushPath(id));
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Remove a subscription by endpoint ONLY when it belongs to the given
+ *  session identity (audit L6: unsubscribe must be authenticated — an
+ *  unauthenticated caller who learns an endpoint must not be able to kill
+ *  someone else's notifications). Returns true when a doc was removed. */
+export async function deletePushSubscriptionByEndpointForUser(
+  endpoint: string,
+  role: 'customer' | 'barber',
+  userId: string
+): Promise<boolean> {
+  const paths = await listDocs(PUSH_PREFIX);
+  let removed = false;
+  for (const p of paths) {
+    if (!p.endsWith('.json')) continue;
+    const d = await getDoc<PushSubscriptionDoc>(p);
+    if (d && d.subscription?.endpoint === endpoint && d.role === role && d.userId === userId) {
+      const id = p.slice(PUSH_PREFIX.length, -'.json'.length);
+      if (/^[a-zA-Z0-9-]+$/.test(id)) {
+        await delDoc(pushPath(id));
+        removed = true;
+      }
+    }
+  }
+  return removed;
+}
+
 /** Gift haircuts. One doc per gift: `data/gifts/<id>.json`. */
 const GIFT_PREFIX = 'data/gifts/';
 const giftPath = (id: string) => `${GIFT_PREFIX}${id}.json`;
@@ -381,6 +543,25 @@ function validChatId(bookingId: string, messageId: string): boolean {
 export async function saveChatMessage(bookingId: string, msg: ChatMessage): Promise<void> {
   if (!validChatId(bookingId, msg.id)) return;
   await putDoc(chatMsgPath(bookingId, msg.id), msg);
+}
+
+/** Delete a whole chat thread (audit M8: account deletion cleanup) — the
+ *  legacy single-file doc plus every per-message file and the meta doc. */
+export async function deleteChatThread(bookingId: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]+$/.test(bookingId)) return;
+  try {
+    await delDoc(chatPath(bookingId));
+  } catch {
+    /* best effort */
+  }
+  const files = await listDocs(chatMsgDir(bookingId)).catch(() => [] as string[]);
+  for (const f of files) {
+    try {
+      await delDoc(f);
+    } catch {
+      /* best effort */
+    }
+  }
 }
 
 /** Delete a single chat message file. */

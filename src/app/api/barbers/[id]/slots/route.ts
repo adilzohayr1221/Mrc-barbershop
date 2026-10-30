@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getBarbers, listBookings } from '@/lib/store';
+import { getBarbers, getServices, listBookings } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
 import { blockedStartsFor } from '@/lib/vip';
 
@@ -12,12 +12,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const date = new URL(req.url).searchParams.get('date') || '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
-  const [barbers, bookings] = await Promise.all([getBarbers(), listBookings()]);
+  const [barbers, bookings, services] = await Promise.all([getBarbers(), listBookings(), getServices()]);
   const barber = barbers.find((b) => b.id === id && b.active && b.approved !== false);
   if (!barber) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  // A VIP home visit blocks its full 2-hour window, not just its start.
+  // A VIP home visit blocks its full 2-hour window; a normal booking blocks
+  // every 30-min start inside its service's duration (audit M7).
+  const durationByService = new Map(services.map((s) => [s.id, s.durationMin]));
   const booked = bookings
     .filter((b) => b.barberId === id && b.date === date && b.status === 'booked')
-    .flatMap((b) => blockedStartsFor(b));
+    .flatMap((b) => blockedStartsFor(b, durationByService.get(b.serviceId)));
   return NextResponse.json({ booked: [...new Set(booked)] });
 }

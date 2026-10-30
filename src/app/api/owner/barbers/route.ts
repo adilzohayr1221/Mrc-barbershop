@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getBarbers, saveBarbers, savePhoto, getBranches, newId } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+import { getBarbers, saveBarbers, savePhoto, getBranches, newId, sniffImageType } from '@/lib/store';
+
+import { requireActiveOwner } from "@/lib/guard";
 import type { Barber } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: list barbers (includes inactive; never includes PINs or password hashes).
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const barbers = await getBarbers();
   return NextResponse.json({
     barbers: barbers.map((b) => {
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
 
 // Owner-only: add a barber. Accepts JSON or multipart (photo).
 export async function POST(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const contentType = req.headers.get('content-type') || '';
   let name = '', skills: string[] = [], branchIds: string[] = [], photoBuf: Buffer | null = null, photoType = '';
 
@@ -54,8 +55,9 @@ export async function POST(req: Request) {
   const id = newId();
   let photoPath: string | null = null;
   if (photoBuf) {
-    const ext = photoType.includes('png') ? 'png' : photoType.includes('webp') ? 'webp' : 'jpg';
-    photoPath = await savePhoto(`${id}.${ext}`, photoBuf, photoType);
+    // Audit M13: store under the sniffed type, not the client-supplied one.
+    const sniffed = sniffImageType(photoBuf);
+    if (sniffed) photoPath = await savePhoto(`${id}.${sniffed.ext}`, photoBuf, sniffed.mime);
   }
   const barber: Barber = {
     id,

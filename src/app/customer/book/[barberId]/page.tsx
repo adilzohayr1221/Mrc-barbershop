@@ -26,6 +26,7 @@ interface Confirmation {
   price: number;
   depositPaid?: number;
   membership?: boolean;
+  guest?: boolean;
   branchAddress: string;
   houseCall?: boolean;
   homeAddress?: string;
@@ -74,8 +75,10 @@ export default function BookPage() {
   const [vipPeople, setVipPeople] = useState(1); // people covered by the visit ($100 each)
   const [visitNotes, setVisitNotes] = useState(''); // optional notes for the barber (apt, gate code…)
   const [planAvailable, setPlanAvailable] = useState(false);
-  const [planOptions, setPlanOptions] = useState<{ id: string; planName: string; planPrice: number }[]>([]);
+  const [planOptions, setPlanOptions] = useState<{ id: string; planName: string; planPrice: number; planKind?: string; guestSlotAvailable?: boolean }[]>([]);
   const [planChoice, setPlanChoice] = useState<string>('');
+  const [forGuest, setForGuest] = useState(false); // yearly-plan guest booking
+  const chosenPlan = planOptions.find((p) => p.id === planChoice) ?? planOptions[0];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<Confirmation | null>(null);
@@ -89,6 +92,7 @@ export default function BookPage() {
   const [step, setStep] = useState<'details' | 'pay'>('details');
   const [clientSecret, setClientSecret] = useState('');
   const [payAmount, setPayAmount] = useState(0);
+  const [cardFeeUpTo, setCardFeeUpTo] = useState(0);
 
   // Profile modal state.
   const [profileOpen, setProfileOpen] = useState(false);
@@ -201,10 +205,12 @@ export default function BookPage() {
       .then((d) => {
         const list = (d.memberships ?? (d.membership ? [d.membership] : []))
           .filter((mm: { status: string; currentWeekAvailable: boolean }) => mm.status === 'active' && mm.currentWeekAvailable)
-          .map((mm: { id: string; planName?: string; planPrice?: number }) => ({
+          .map((mm: { id: string; planName?: string; planPrice?: number; planKind?: string; guestSlot?: { state?: string } | null }) => ({
             id: mm.id,
             planName: mm.planName ?? t('book.monthlyPlan'),
             planPrice: mm.planPrice ?? 0,
+            planKind: mm.planKind ?? 'standard',
+            guestSlotAvailable: mm.guestSlot?.state === 'available',
           }));
         if (list.length) {
           setPlanAvailable(true);
@@ -265,6 +271,7 @@ export default function BookPage() {
       if (!r.ok) throw new Error(d.error || t('book.couldNotStartPayment'));
       setClientSecret(d.clientSecret);
       setPayAmount(d.amount);
+      setCardFeeUpTo(d.cardFeeUpTo ?? 0);
       setStep('pay');
       window.scrollTo({ top: 0 });
     } catch (e) {
@@ -288,7 +295,7 @@ export default function BookPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${customerToken()}`,
         },
-        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, useMembership: true, membershipId: planChoice || undefined }),
+        body: JSON.stringify({ barberId, serviceId, branchId, date, time, customerName: name, customerPhone: phone, useMembership: true, membershipId: planChoice || undefined, ...(forGuest && chosenPlan?.planKind === 'yearly' ? { forGuest: true } : {}) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t('book.bookingFailed'));
@@ -342,7 +349,7 @@ export default function BookPage() {
             <p><span className="text-neutral-500 text-sm block">{t('book.barber')}</span><b>{done.barberName}</b></p>
             <p><span className="text-neutral-500 text-sm block">{t('book.service')}</span><b>{done.serviceName}</b> <span className="text-gold font-semibold">${done.price}</span></p>
             {done.membership ? (
-              <p><span className="text-neutral-500 text-sm block">{t('book.payment')}</span><b className="text-gold">{t('book.coveredByPlan')}</b><span className="text-neutral-500 text-sm"> · {t('book.showCodeAtShop')}</span></p>
+              <p><span className="text-neutral-500 text-sm block">{t('book.payment')}</span><b className="text-gold">{t('book.coveredByPlan')}</b><span className="text-neutral-500 text-sm"> · {t('book.showCodeAtShop')}</span>{done.guest && <span className="block text-sm text-gold font-semibold mt-1">🎁 {t('book.guestBookedNote')}</span>}</p>
             ) : typeof done.depositPaid === 'number' && (
               <p><span className="text-neutral-500 text-sm block">{t('book.depositPaidNow')}</span><b className="text-gold">${done.depositPaid.toFixed(2)}</b>
                 {done.price - done.depositPaid > 0.005 && (
@@ -442,6 +449,12 @@ export default function BookPage() {
           <PaymentStep
             clientSecret={clientSecret}
             amount={payAmount}
+            manualCapture={isVip}
+            feeInfo={
+              cardFeeUpTo > 0
+                ? { maxFee: cardFeeUpTo, mode: isVip ? 'now' : 'remainder' }
+                : null
+            }
             summary={{
               serviceName: isVip ? 'VIP Home Visit' : (services.find((s) => s.id === serviceId)?.name || t('book.service')),
               barberName: barber?.name || t('book.barber'),
@@ -617,11 +630,24 @@ export default function BookPage() {
                           : 'border-neutral-200 bg-white text-neutral-600'
                       }`}
                     >
-                      {p.planName}{p.planPrice ? ` · $${p.planPrice}/mo` : ''}
+                      {p.planName}{p.planPrice ? ` · $${p.planPrice}${p.planKind === 'yearly' ? '/yr' : '/mo'}` : ''}
                     </button>
                   ))}
                 </div>
               </div>
+            )}
+            {chosenPlan?.planKind === 'yearly' && chosenPlan.guestSlotAvailable && (
+              <button
+                type="button"
+                onClick={() => setForGuest((g) => !g)}
+                className={`rounded-xl px-3.5 py-2.5 text-[13px] font-bold border-2 transition-all text-left ${
+                  forGuest
+                    ? 'border-gold bg-gold/15 text-[#1c1a15]'
+                    : 'border-neutral-200 bg-white text-neutral-600'
+                }`}
+              >
+                🎁 {t('book.bookForGuest')} {forGuest ? '✓' : ''}
+              </button>
             )}
             <button onClick={bookWithMembership} disabled={busy} className="gold-btn rounded-2xl px-6 py-4 text-[17px]">
               {busy ? t('book.bookingInProgress') : t('book.bookWithPlan')}

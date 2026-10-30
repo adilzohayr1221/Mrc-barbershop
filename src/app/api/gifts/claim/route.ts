@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireCustomer } from '@/lib/auth';
+
 import { listGifts, saveGift } from '@/lib/store';
+import { rateLimitExceeded, clientIp, requireActiveCustomer } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
@@ -10,9 +11,14 @@ export const dynamic = 'force-dynamic';
 // by only one account.
 // Body: { shortCode }.
 export async function POST(req: Request) {
-  const session = requireCustomer(req);
+  const session = await requireActiveCustomer(req);
   if (!session || !session.customerId) {
     return NextResponse.json({ error: 'Please log in.' }, { status: 401 });
+  }
+  // Audit M11 (2026-10-22): claiming is a code-guessing surface — rate-limit
+  // attempts per account + IP (10 per 10 minutes, shared store).
+  if (await rateLimitExceeded(`gift-claim:${session.customerId}:${clientIp(req)}`, 10, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts. Wait a few minutes and try again.' }, { status: 429 });
   }
   const body = await req.json().catch(() => null);
   const raw = body?.shortCode;
@@ -52,8 +58,12 @@ export async function POST(req: Request) {
       buyerName: gift.buyerName,
       recipientName: gift.recipientName,
       shortCode: gift.shortCode,
-token: gift.token,
-      qr: `MRC3:${gift.id}:${gift.token}`,
+      // Audit M11 (2026-10-22): the raw redeem token / QR is NOT returned
+      // to the claimer — whoever typed the short code already holds the
+      // bearer credential (the code itself redeems at the shop). Handing
+      // out the strong token here would upgrade a guessed 6-char code
+      // into the full QR credential. The BUYER still gets the QR from
+      // his own purchase / "my gifts" (bought) views.
       expiresAt: gift.expiresAt,
     },
   });

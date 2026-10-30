@@ -24,6 +24,14 @@
 .DS_Store
 *.pem
 
+# signing keys & certs (audit H9, 2026-10-22) — private keys never in git.
+# Files stay on disk locally; production signing needs a secrets store.
+*.key
+*.p12
+*.mobileprovision
+/certs/
+/assets/signing/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

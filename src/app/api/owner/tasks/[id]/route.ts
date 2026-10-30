@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTask, deleteTask } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // The task disappears from the barbers' lists too. Proof photos are tiny Blob
 // objects and are left in place, same as deleted work photos.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const task = await getTask(id);
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });

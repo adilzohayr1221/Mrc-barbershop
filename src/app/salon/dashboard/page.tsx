@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { TasksTab } from '@/components/TasksTab';
 import { Leaderboard } from '@/components/Leaderboard';
 import type { Barber, Service, Review, Branch, Booking, Salon } from '@/lib/types';
+import { formatDateUS, formatTime12h } from '@/lib/format';
 
 type Tab = 'appointments' | 'barbers' | 'leaderboard' | 'earnings' | 'services' | 'reviews' | 'tasks';
 
@@ -196,10 +197,11 @@ function AppointmentsTab({ bookings }: { bookings: FullBooking[] }) {
         <div key={b.id} className="card p-4">
           <div className="flex justify-between items-center gap-2">
             <b className="text-[15px] truncate">{b.customerEmail || b.customerName || 'Customer'}</b>
-            <span className="chip shrink-0">{b.date} · {b.time}</span>
+            <span className="chip shrink-0">{formatDateUS(b.date)} · {formatTime12h(b.time)}</span>
           </div>
-          <div className="text-sm text-neutral-600 mt-1.5">
-            {b.serviceName} with {b.barberName}
+          <div className="text-sm text-neutral-600 mt-1.5 space-y-0.5">
+            <div><span className="text-neutral-400">Service:</span> {b.serviceName}</div>
+            <div><span className="text-neutral-400">Barber:</span> {b.barberName}</div>
           </div>
           <div className="text-xs text-neutral-600 mt-0.5">{b.branchAddress}</div>
         </div>
@@ -216,10 +218,11 @@ function AppointmentsTab({ bookings }: { bookings: FullBooking[] }) {
           <div key={b.id} className="card p-4 opacity-55">
             <div className="flex justify-between items-center gap-2">
               <b className="text-[15px] text-neutral-500 line-through truncate">{b.customerEmail || b.customerName || 'Customer'}</b>
-              <span className="chip !text-neutral-500 shrink-0">{b.date} · {b.time}</span>
+              <span className="chip !text-neutral-500 shrink-0">{formatDateUS(b.date)} · {formatTime12h(b.time)}</span>
             </div>
-            <div className="text-sm text-neutral-400 mt-1.5">
-              {b.serviceName} with {b.barberName}
+            <div className="text-sm text-neutral-400 mt-1.5 space-y-0.5">
+              <div>Service: {b.serviceName}</div>
+              <div>Barber: {b.barberName}</div>
             </div>
             <div className="text-xs text-neutral-400 mt-0.5">{b.branchAddress}</div>
           </div>

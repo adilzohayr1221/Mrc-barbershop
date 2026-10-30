@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTask, saveTask } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // Body: { barberId, action: 'approve' | 'reopen' }
 // The super-admin sits above all salons, so he may review any task.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const barberId = String(body?.barberId || '');

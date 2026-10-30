@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getReview, saveReview, deleteReview } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: edit a review's text/rating.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const review = await getReview(id);
   if (!review) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -27,7 +28,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 // Owner-only: delete a review.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   await deleteReview(id);
   return NextResponse.json({ ok: true });

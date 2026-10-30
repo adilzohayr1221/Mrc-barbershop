@@ -1,0 +1,1 @@
+{"capacitor":{"ios":{"src":"ios"}},"description":"Native Apple Maps (MapKit) branch map for the MRC Barbershop iOS app. Renders a real MKMapView with the shop's original pins inside the gold frame, positioned over the WebView where the web map would sit.","files":["Package.swift","ios/Sources"],"license":"UNLICENSED","name":"capacitor-branch-map","private":true,"version":"1.0.0"}

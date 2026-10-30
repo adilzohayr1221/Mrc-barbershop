@@ -138,7 +138,7 @@ function ClaimInner() {
             </p>
             <div className="mt-5 flex justify-center">
               <div className="bg-white rounded-2xl p-3 border border-gold/30">
-                <QRCodeSVG value={gift.qr} size={176} />
+                <QRCodeSVG value={gift.qr ?? gift.shortCode} size={176} />
               </div>
             </div>
             <p className="text-center mt-4 text-[12px] uppercase tracking-[0.2em] text-neutral-500">Gift code</p>

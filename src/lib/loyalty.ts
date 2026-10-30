@@ -16,7 +16,10 @@ import {
   saveCustomerLoyalty,
   saveLoyaltyReward,
   newId,
+  listBookings,
+  listGifts,
 } from './store';
+import { countHaircuts, countGiftHaircuts } from './earnings';
 import type { BarberMilestone, CustomerLoyalty } from './types';
 import { PLATFORM_SALON_ID } from './types';
 import { randomBytes } from 'node:crypto';
@@ -146,6 +149,51 @@ export async function recordHaircut(opts: {
       console.error('[loyalty] customer loyalty failed', e);
     }
   }
+}
+
+/** The barber's milestone record, healed upward from the real completed
+ *  haircuts (bookings + redeemed gifts, counted with the same rules as the
+ *  leaderboard). recordHaircut can miss a haircut when a completion path
+ *  fails midway (e.g. a payout failure at Done time) — this read-time
+ *  reconciliation makes the displayed count always match the haircuts that
+ *  actually happened, and evaluates any bonus threshold the healed count
+ *  crosses. It only ever raises the stored count, never lowers it. */
+export async function healedBarberMilestone(barberId: string): Promise<BarberMilestone> {
+  const now = nowIso();
+  let m = await getBarberMilestone(barberId);
+  if (!m) {
+    m = {
+      id: barberId,
+      barberId,
+      salonId: PLATFORM_SALON_ID,
+      completedHaircuts: 0,
+      bonus10: 'none',
+      bonus100: 'none',
+      updatedAt: now,
+    };
+  }
+  try {
+    const [bookings, gifts] = await Promise.all([listBookings(), listGifts()]);
+    const derived =
+      countHaircuts(bookings.filter((b) => b.barberId === barberId)).all +
+      countGiftHaircuts(gifts.filter((g) => g.redeemedByBarberId === barberId)).all;
+    if (derived > m.completedHaircuts) {
+      m.completedHaircuts = derived;
+      if (m.completedHaircuts >= BONUS_10_AT && m.bonus10 === 'none') {
+        m.bonus10 = 'earned';
+        m.bonus10EarnedAt = now;
+      }
+      if (m.completedHaircuts >= BONUS_100_AT && m.bonus100 === 'none') {
+        m.bonus100 = 'earned';
+        m.bonus100EarnedAt = now;
+      }
+      m.updatedAt = now;
+      await saveBarberMilestone(m);
+    }
+  } catch (e) {
+    console.error('[loyalty] milestone heal failed', e);
+  }
+  return m;
 }
 
 /** Short public code for manual entry (like gift short codes). */

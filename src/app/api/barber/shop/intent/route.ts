@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { barberSalonId } from '@/lib/salonScope';
 import { getBarbers, getShopProduct, inSalon } from '@/lib/store';
 import { getStripe, isStripeConfigured, toCents } from '@/lib/stripe';
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   if (!isStripeConfigured()) {
     return NextResponse.json({ error: 'Card payments are not configured yet.' }, { status: 503 });
   }
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session?.barberId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const productId = body?.productId;

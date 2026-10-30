@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getServices, saveServices } from '@/lib/store';
-import { requireOwner } from '@/lib/auth';
+
+import { requireActiveOwner } from "@/lib/guard";
 
 export const dynamic = 'force-dynamic';
 
 // Owner-only: update a service.
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const services = await getServices();
@@ -35,7 +36,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
 // Owner-only: delete a service.
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   const services = await getServices();
   const idx = services.findIndex((s) => s.id === id);

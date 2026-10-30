@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireBarber } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
 import { getBarbers } from '@/lib/store';
 import { getLeaderboard } from '@/lib/leaderboard';
 import { PLATFORM_SALON_ID } from '@/lib/types';
 
 /** Monthly barber leaderboard, scoped to the barber's own salon. Read-only. */
 export async function GET(req: Request) {
-  const s = requireBarber(req);
+  const s = await requireActiveBarber(req);
   if (!s || !s.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

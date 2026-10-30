@@ -1,13 +1,37 @@
 import { getStripe } from './stripe';
 import { getMembership, saveMembership, listRedemptions, getCustomer, saveCustomer } from './store';
-import type { Membership, MembershipRedemption } from './types';
+import type { Booking, Membership } from './types';
 import { randomUUID } from 'node:crypto';
+import { planKindOf } from './planWindows';
+
+// Weekly window math lives in ./planWindows (pure, simulation-tested).
+// Re-exported here so existing imports keep working unchanged.
+export {
+  weekWindows,
+  currentWeekIndex,
+  currentPlanWindowIndex,
+  buildWeeks,
+  buildGuestWeeks,
+  currentGuestSlot,
+  planWindowCount,
+  planWindows,
+  yearlyCycleBoundaries,
+  addShopMonths,
+} from './planWindows';
+export type { WeekState, PlanWindow } from './planWindows';
 
 // Monthly haircut plan: $120 / month, 4 haircuts (one per week).
 export const PLAN_PRICE_USD = 120;
 export const PLAN_HAIRCUTS = 4;
 export const PLAN_LOOKUP_KEY = 'mrc_monthly_plan';
 export const PLAN_PRODUCT_NAME = 'MRC Monthly Haircut Plan';
+
+// Yearly haircut plan: $1,300 / year, 48 haircuts (one per week — the same
+// 4-per-cycle weekly rhythm as the monthly plan, over 12 monthly cycles).
+export const YEARLY_PRICE_USD = 1300;
+export const YEARLY_HAIRCUTS = 48;
+export const YEARLY_LOOKUP_KEY = 'mrc_yearly_plan';
+export const YEARLY_PRODUCT_NAME = 'MRC Master Yearly Plan';
 
 // Mix & Match plan: the customer picks 4 services (one per week) and the
 // monthly price is computed from the chosen services' real prices.
@@ -20,73 +44,89 @@ export function customPlanPrice(prices: number[]): number {
   return Math.max(1, Math.round(sum * CUSTOM_PLAN_KEEP_RATIO));
 }
 
-/** What the customer pays per month for this membership. */
+/** What the customer pays per billing period for this membership
+ *  (per month for monthly/custom plans, per year for the yearly plan). */
 export function membershipPrice(m: Membership): number {
-  return m.planKind === 'custom' && m.planPriceUsd && m.planPriceUsd > 0 ? m.planPriceUsd : PLAN_PRICE_USD;
+  if (m.planKind === 'custom' && m.planPriceUsd && m.planPriceUsd > 0) return m.planPriceUsd;
+  if (planKindOf(m) === 'yearly') return YEARLY_PRICE_USD;
+  return PLAN_PRICE_USD;
 }
 
-/** Barber payout per redeemed week: same economics as the standard plan
- *  ($30 = 25% of $120) — total payouts can never exceed the plan price. */
+/** Billing interval of the plan ('month' | 'year') — drives /mo vs /yr
+ *  suffixes in the UI; the two are never inferred from the price. */
+export function membershipInterval(m: Membership): 'month' | 'year' {
+  return planKindOf(m) === 'yearly' ? 'year' : 'month';
+}
+
+/** Barber payout per redeemed week for MONTHLY-family plans.
+ *  - Standard plan: $30 (25% of the $120 monthly plan).
+ *  - Mix & Match: 25% of its computed monthly price, so a custom plan's
+ *    total payouts can never exceed what the customer paid for it.
+ *  NOTE: yearly-plan redemptions do NOT use this — they pay a flat $25
+ *  (member and guest) via membershipRedemptionPayout below. */
 export function membershipPayoutPerWeek(m: Membership): number {
-  return Math.round(membershipPrice(m) * 0.25 * 100) / 100;
+  if (m.planKind === 'custom' && m.planPriceUsd && m.planPriceUsd > 0) {
+    return Math.round(m.planPriceUsd * 0.25 * 100) / 100;
+  }
+  return Math.round(PLAN_PRICE_USD * 0.25 * 100) / 100; // $30
+}
+
+/** Barber payout for a YEARLY-plan redemption: $25 — for BOTH the
+ *  member's own cut and the guest cut (owner's rule, 2026-10-28).
+ *  Deliberately different from the monthly plan's $30. */
+export const YEARLY_PAYOUT_USD = 25;
+
+/** Payout for one redemption, as a plan-kind rule:
+ *  - Yearly plan: $25, member and guest alike.
+ *  - Monthly / Mix & Match: the per-week amount ($30 standard; 25% of the
+ *    custom price) via membershipPayoutPerWeek — unchanged. */
+export function membershipRedemptionPayout(m: Membership, guest: boolean): number {
+  void guest; // yearly pays $25 for both kinds; other plans have no guests
+  if (planKindOf(m) === 'yearly') return YEARLY_PAYOUT_USD;
+  return membershipPayoutPerWeek(m);
+}
+
+/** Stripe idempotency key for a plan payout. The guest segment keeps a
+ *  yearly plan's GUEST payout for a window distinct from the member's own
+ *  payout for the SAME window — without it the two $30 transfers for one
+ *  week would collide and one barber would silently never be paid. */
+export function membershipPayoutKey(
+  membershipId: string,
+  weekIndex: number,
+  periodStart: string,
+  guest: boolean
+): string {
+  return guest
+    ? `payout-membership-guest-${membershipId}-${weekIndex}-${periodStart}`
+    : `payout-membership-${membershipId}-${weekIndex}-${periodStart}`;
+}
+
+/** Ids of the YEARLY memberships behind a list of bookings. Earnings
+ *  attribution (lib/earnings) values a yearly redemption at $25 instead
+ *  of the monthly $30, and earningOf is synchronous — so callers resolve
+ *  the yearly plan ids once and pass the set down. Reads the stored plan
+ *  docs only: planKind is fixed at purchase, so no Stripe sync is needed
+ *  and monthly/custom behavior is untouched. */
+export async function yearlyMembershipIdsIn(bookings: Booking[]): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (const b of bookings) {
+    if (b.paymentStatus === 'membership_redeemed' && b.membershipId) ids.add(b.membershipId);
+  }
+  const yearly = new Set<string>();
+  await Promise.all(
+    [...ids].map(async (id) => {
+      const m = await getMembership(id).catch(() => null);
+      if (m && planKindOf(m) === 'yearly') yearly.add(id);
+    })
+  );
+  return yearly;
 }
 
 /** Display name for the plan (customer-facing, no discount talk). */
 export function membershipPlanName(m: Membership): string {
-  return m.planKind === 'custom' ? 'Mix & Match Plan' : 'Monthly Plan';
-}
-
-export interface WeekState {
-  index: number; // 0..3
-  label: string; // "Week 1".."Week 4"
-  start: Date;
-  end: Date;
-  state: 'used' | 'available' | 'expired' | 'upcoming';
-  redeemedAt: string | null;
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Split a Stripe billing period into 4 weekly windows. Weeks 1-3 are 7 days;
- *  week 4 runs to the period end (7-10 days depending on the month). */
-export function weekWindows(periodStart: Date, periodEnd: Date): { start: Date; end: Date }[] {
-  const out: { start: Date; end: Date }[] = [];
-  for (let i = 0; i < PLAN_HAIRCUTS; i++) {
-    const start = new Date(periodStart.getTime() + i * 7 * DAY_MS);
-    const end = i === PLAN_HAIRCUTS - 1 ? periodEnd : new Date(start.getTime() + 7 * DAY_MS);
-    out.push({ start, end });
-  }
-  return out;
-}
-
-/** Current week index (0..3) inside the billing period, clamped. */
-export function currentWeekIndex(periodStart: Date, periodEnd: Date, now = new Date()): number {
-  if (now < periodStart) return 0;
-  if (now >= periodEnd) return PLAN_HAIRCUTS - 1;
-  return Math.min(PLAN_HAIRCUTS - 1, Math.floor((now.getTime() - periodStart.getTime()) / (7 * DAY_MS)));
-}
-
-export function buildWeeks(m: Membership, redemptions: MembershipRedemption[], now = new Date()): WeekState[] {
-  const start = new Date(m.currentPeriodStart);
-  const end = new Date(m.currentPeriodEnd);
-  const windows = weekWindows(start, end);
-  const cur = currentWeekIndex(start, end, now);
-  return windows.map((w, i) => {
-    const red = redemptions.find((r) => r.weekIndex === i && r.periodStart === m.currentPeriodStart);
-    let state: WeekState['state'];
-    if (red) state = 'used';
-    else if (i < cur) state = 'expired';
-    else if (i === cur) state = 'available';
-    else state = 'upcoming';
-    return {
-      index: i,
-      label: `Week ${i + 1}`,
-      start: w.start,
-      end: w.end,
-      state,
-      redeemedAt: red?.redeemedAt ?? null,
-    };
-  });
+  if (m.planKind === 'custom') return 'Mix & Match Plan';
+  if (planKindOf(m) === 'yearly') return 'Master Yearly Plan';
+  return 'Monthly Plan';
 }
 
 /** The $120/month recurring price, created once (idempotent via lookup_key). */
@@ -105,6 +145,27 @@ export async function getOrCreatePlanPrice(): Promise<string> {
     recurring: { interval: 'month' },
     lookup_key: PLAN_LOOKUP_KEY,
     nickname: 'MRC Monthly Plan $120/mo',
+  });
+  return price.id;
+}
+
+/** The $1,300/year recurring price, created once (idempotent via lookup_key).
+ *  Same mechanism as the monthly plan price — safe to call on every checkout. */
+export async function getOrCreateYearlyPlanPrice(): Promise<string> {
+  const stripe = getStripe();
+  const existing = await stripe.prices.list({ lookup_keys: [YEARLY_LOOKUP_KEY], limit: 1 });
+  if (existing.data.length) return existing.data[0].id;
+  const product = await stripe.products.create({
+    name: YEARLY_PRODUCT_NAME,
+    description: 'Unlimited haircuts — one every week, all year. Unused weeks expire.',
+  });
+  const price = await stripe.prices.create({
+    product: product.id,
+    unit_amount: YEARLY_PRICE_USD * 100,
+    currency: 'usd',
+    recurring: { interval: 'year' },
+    lookup_key: YEARLY_LOOKUP_KEY,
+    nickname: 'MRC Master Yearly Plan $1300/yr',
   });
   return price.id;
 }

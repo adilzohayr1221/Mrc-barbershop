@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { requireBarber, sessionSalonId } from '@/lib/auth';
-import { getLoyaltyReward, saveLoyaltyReward, getCustomers } from '@/lib/store';
+import { sessionSalonId } from '@/lib/auth';
+import { requireActiveBarber } from '@/lib/guard';
+import { getLoyaltyReward, saveLoyaltyReward, getCustomers, salonOf } from '@/lib/store';
+import { barberSalonId } from '@/lib/salonScope';
 import { recordHaircut } from '@/lib/loyalty';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // payout (like complaint comps) — but the haircut still counts toward the
 // barber's milestone bonuses. Redeeming only marks the code used.
 export async function POST(req: Request) {
-  const session = requireBarber(req);
+  const session = await requireActiveBarber(req);
   if (!session || !session.barberId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -30,6 +32,11 @@ export async function POST(req: Request) {
   }
   if (reward.status === 'redeemed') {
     return NextResponse.json({ error: 'This free haircut was already used.' }, { status: 410 });
+  }
+  // Audit M10 (2026-10-22): a loyalty reward can only be redeemed inside
+  // its own salon.
+  if (salonOf(reward) !== (await barberSalonId(session))) {
+    return NextResponse.json({ error: 'This code belongs to a different salon.' }, { status: 403 });
   }
 
   if (preview) {
@@ -55,7 +62,7 @@ export async function POST(req: Request) {
     barberId: session.barberId,
     customerId: reward.customerId,
     paid: false,
-    salonId: sessionSalonId(session),
+    salonId: salonOf(reward),
   });
 
   return NextResponse.json({

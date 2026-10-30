@@ -67,12 +67,21 @@ function PayForm({
   onSuccess,
   onBack,
   onError,
+  manualCapture,
+  feeInfo,
 }: {
   amount: number;
   summary: Summary;
   onSuccess: (paymentIntentId: string) => void;
   onBack: () => void;
   onError: (msg: string) => void;
+  // Manual-capture payments (VIP, gifts): a confirmed payment is only
+  // AUTHORIZED here — the server captures it when the purchase is created.
+  manualCapture?: boolean;
+  // Card processing fee disclosure (owner's rule, 2026-10-28): the fee a
+  // CREDIT card adds — 'now' = on this payment, 'remainder' = on the
+  // balance charged after the haircut. Debit/prepaid cards never pay it.
+  feeInfo?: { maxFee: number; mode: 'now' | 'remainder' } | null;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -92,7 +101,11 @@ function PayForm({
       setBusy(false);
       return;
     }
-    if (paymentIntent && paymentIntent.status === 'succeeded') {
+    if (
+      paymentIntent &&
+      (paymentIntent.status === 'succeeded' ||
+        (manualCapture && paymentIntent.status === 'requires_capture'))
+    ) {
       const { hapticSuccess } = await import('@/lib/haptics');
       hapticSuccess();
       onSuccess(paymentIntent.id);
@@ -119,6 +132,21 @@ function PayForm({
             <span className="font-bold">{summary.amountLabel ?? t('barber.payment.due_now_default')}</span>
             <b className="text-gold text-[18px]">${amount.toFixed(2)}</b>
           </p>
+          {feeInfo && feeInfo.mode === 'now' && feeInfo.maxFee > 0 && (
+            <>
+              <p className="flex justify-between gap-3">
+                <span className="text-neutral-500">{t('barber.payment.card_fee')}</span>
+                <b className="text-right">{t('barber.payment.card_fee_up_to').replace('{amount}', '$' + feeInfo.maxFee.toFixed(2))}</b>
+              </p>
+              <p className="flex justify-between gap-3">
+                <span className="text-neutral-500">{t('barber.payment.card_fee_total')}</span>
+                <b className="text-right">${(amount + feeInfo.maxFee).toFixed(2)}</b>
+              </p>
+              <p className="text-[12px] text-neutral-500 leading-relaxed">
+                {t('barber.payment.card_fee_debit').replace('{amount}', '$' + amount.toFixed(2))}
+              </p>
+            </>
+          )}
           {summary.totalPrice - amount > 0.005 && (
             <p className="text-[13px] text-neutral-500 text-right -mt-1">
               {t('appt.payAtShop').replace('{amount}', '$' + (summary.totalPrice - amount).toFixed(2))}
@@ -126,9 +154,14 @@ function PayForm({
           )}
           {summary.totalPrice - amount > 0.005 && (
             <p className="text-[12px] text-neutral-500 leading-relaxed mt-2 pt-2 border-t border-[#e6dabf]">
-              By paying this deposit you agree that before your haircut, your barber will charge
-              the remaining ${(summary.totalPrice - amount).toFixed(2)} to this same card when
-              you show your payment code.
+              By paying this deposit you agree that the remaining ${(summary.totalPrice - amount).toFixed(2)} will be
+              charged to this same card automatically when your haircut is finished.
+              You pay nothing at the shop.
+            </p>
+          )}
+          {feeInfo && feeInfo.mode === 'remainder' && feeInfo.maxFee > 0 && (
+            <p className="text-[12px] text-neutral-500 leading-relaxed mt-2">
+              {t('barber.payment.card_fee_remainder').replace('{amount}', '$' + feeInfo.maxFee.toFixed(2))}
             </p>
           )}
         </div>
@@ -160,6 +193,8 @@ export default function PaymentStep({
   onSuccess,
   onBack,
   onError,
+  manualCapture,
+  feeInfo,
 }: {
   clientSecret: string;
   amount: number;
@@ -167,6 +202,8 @@ export default function PaymentStep({
   onSuccess: (paymentIntentId: string) => void;
   onBack: () => void;
   onError: (msg: string) => void;
+  manualCapture?: boolean;
+  feeInfo?: { maxFee: number; mode: 'now' | 'remainder' } | null;
 }) {
   return (
     <Elements
@@ -183,7 +220,15 @@ export default function PaymentStep({
         },
       }}
     >
-      <PayForm amount={amount} summary={summary} onSuccess={onSuccess} onBack={onBack} onError={onError} />
+      <PayForm
+        amount={amount}
+        summary={summary}
+        onSuccess={onSuccess}
+        onBack={onBack}
+        onError={onError}
+        manualCapture={manualCapture}
+        feeInfo={feeInfo}
+      />
     </Elements>
   );
 }

@@ -1,44 +1,31 @@
 import { NextResponse } from 'next/server';
-import { getCustomerByEmail, getCustomer, saveCustomer, newId } from '@/lib/store';
+import { getCustomerByEmail, getCustomer, saveCustomer, newId, claimOnce, releaseClaim, signupEmailClaimKey } from '@/lib/store';
 import { ensureSeeded } from '@/lib/seed';
-import {
-  signSession,
-  verifySession,
-  bearerToken,
-  hashPassword,
-  verifyPassword,
-  isValidEmail,
-} from '@/lib/auth';
+import { signSession, hashPassword, verifyPassword, isValidEmail } from '@/lib/auth';
+import { rateLimitExceeded, requireActiveCustomer, clientIp } from '@/lib/guard';
 import type { Customer, PublicCustomer } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-// Simple in-memory throttle: 10 attempts / 5 min per IP.
-const attempts = new Map<string, { count: number; resetAt: number }>();
-function throttled(ip: string): boolean {
-  const now = Date.now();
-  const rec = attempts.get(ip);
-  if (!rec || rec.resetAt < now) {
-    attempts.set(ip, { count: 1, resetAt: now + 5 * 60 * 1000 });
-    return false;
-  }
-  rec.count += 1;
-  return rec.count > 10;
-}
+// Audit M11 (2026-10-29): the throttle moved from a per-instance in-memory
+// map to the shared store limiter, keyed per account (IP + email) with a
+// broader per-IP cap on top — cold starts no longer reset it and one
+// attacker IP can't burn another customer's budget.
+const WINDOW_MS = 5 * 60 * 1000;
+const PER_ACCOUNT_LIMIT = 10;
+const PER_IP_LIMIT = 30;
 
 function publicCustomer(c: Customer): PublicCustomer {
   return { id: c.id, name: c.name, email: c.email };
 }
 
-function ipOf(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-}
-
 // GET /api/auth/customer — return the logged-in customer (session check).
+// Audit M7: the session must still be valid (account exists, auth version
+// matches) — a deleted account's token dies here too.
 export async function GET(req: Request) {
   await ensureSeeded();
-  const payload = verifySession(bearerToken(req));
-  if (!payload || payload.role !== 'customer' || !payload.customerId) {
+  const payload = await requireActiveCustomer(req);
+  if (!payload?.customerId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const customer = await getCustomer(payload.customerId);
@@ -49,22 +36,34 @@ export async function GET(req: Request) {
 // POST /api/auth/customer — { mode: 'signup'|'login', name?, email, password }
 export async function POST(req: Request) {
   await ensureSeeded();
-  if (throttled(ipOf(req))) {
-    return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
-  }
-
   const body = await req.json().catch(() => null);
   const { mode, name, email, password } = body ?? {};
 
   if (!isValidEmail(email)) {
     return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 });
   }
-  if (typeof password !== 'string' || password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
-  }
   const cleanEmail = email.trim().toLowerCase();
 
+  const ip = clientIp(req);
+  const [overIp, overAccount] = await Promise.all([
+    rateLimitExceeded(`customer-auth-ip:${ip}`, PER_IP_LIMIT, WINDOW_MS),
+    rateLimitExceeded(`customer-auth:${ip}:${cleanEmail}`, PER_ACCOUNT_LIMIT, WINDOW_MS),
+  ]);
+  if (overIp || overAccount) {
+    return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 });
+  }
+
+  if (typeof password !== 'string' || password.length === 0) {
+    return NextResponse.json({ error: 'Invalid email or password.' }, { status: 400 });
+  }
+
   if (mode === 'signup') {
+    // Audit M11: new passwords are at least 8 characters (was 6). The rule
+    // applies at set/change time only — existing shorter passwords still
+    // log in below.
+    if (password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+    }
     if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 60) {
       return NextResponse.json({ error: 'Enter your name.' }, { status: 400 });
     }
@@ -75,16 +74,39 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+    // Audit M11: atomically claim the email BEFORE creating the record —
+    // the old check-then-save raced (customer docs are listed, not keyed),
+    // so two concurrent signups could split one email into two accounts.
+    const claimKey = signupEmailClaimKey(cleanEmail);
+    if (!(await claimOnce(claimKey))) {
+      const raced = await getCustomerByEmail(cleanEmail);
+      if (raced) {
+        return NextResponse.json(
+          { error: 'An account with this email already exists. Try logging in instead.' },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json(
+        { error: 'An account with this email already exists. Try logging in instead.' },
+        { status: 409 }
+      );
+    }
     const customer: Customer = {
       id: newId(),
       name: name.trim(),
       email: cleanEmail,
       passwordHash: hashPassword(password),
+      authVersion: 0,
       createdAt: new Date().toISOString(),
     };
-    await saveCustomer(customer);
+    try {
+      await saveCustomer(customer);
+    } catch (e) {
+      await releaseClaim(claimKey);
+      throw e;
+    }
     return NextResponse.json(
-      { token: signSession('customer', customer.id), customer: publicCustomer(customer) },
+      { token: signSession('customer', customer.id, undefined, customer.authVersion ?? 0), customer: publicCustomer(customer) },
       { status: 201 }
     );
   }
@@ -96,7 +118,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
     return NextResponse.json({
-      token: signSession('customer', customer.id),
+      token: signSession('customer', customer.id, undefined, customer.authVersion ?? 0),
       customer: publicCustomer(customer),
     });
   }

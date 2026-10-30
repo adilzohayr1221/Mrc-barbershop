@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner } from '@/lib/auth';
+import { signPhotoUrl } from "@/lib/auth";
+import { requireActiveOwner } from "@/lib/guard";
 import { getCustomers, getCustomer, saveCustomer } from '@/lib/store';
 import { sendPushToUser } from '@/lib/push';
 
@@ -7,12 +8,12 @@ export const dynamic = 'force-dynamic';
 
 function photoUrlOf(photoPath: string | null | undefined): string | null {
   if (!photoPath) return null;
-  return `/api/photos/${encodeURIComponent(photoPath.split('/').pop() || '')}`;
+  return signPhotoUrl(photoPath.split('/').pop() || '');
 }
 
 // GET /api/owner/discounts — pending requests and approved discounts.
 export async function GET(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const customers = await getCustomers();
   const withDiscount = customers
     .filter((c) => c.discount && (c.discount.status === 'pending' || c.discount.status === 'approved'))
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
 
 // POST /api/owner/discounts — { customerId, action: 'approve'|'reject'|'revoke' }.
 export async function POST(req: Request) {
-  if (!requireOwner(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!(await requireActiveOwner(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   const customerId = body?.customerId;
   const action = body?.action;
@@ -48,6 +49,32 @@ export async function POST(req: Request) {
   const now = new Date().toISOString();
   if (action === 'revoke') {
     customer.discount = null;
+    // Audit M6 (2026-10-29): revoking locally is not enough — the 15%
+    // coupon was applied to the customer's LIVE Stripe subscriptions at
+    // checkout and Stripe keeps honoring it on every renewal until it is
+    // removed there too. Remove the discount from every active/past_due
+    // subscription of this customer's memberships. Failures are logged
+    // loudly server-side; the local revoke still completes (the customer
+    // also loses the discount at our own price layer immediately).
+    try {
+      const { getMembershipsByCustomer } = await import('@/lib/store');
+      const { getStripe, isStripeConfigured } = await import('@/lib/stripe');
+      if (isStripeConfigured()) {
+        const stripe = getStripe();
+        const memberships = await getMembershipsByCustomer(customer.id);
+        for (const m of memberships) {
+          if (!m.stripeSubscriptionId) continue;
+          if (m.status !== 'active' && m.status !== 'past_due') continue;
+          try {
+            await stripe.subscriptions.deleteDiscount(m.stripeSubscriptionId);
+          } catch (e) {
+            console.error('[discounts] failed to remove Stripe discount from subscription', m.stripeSubscriptionId, e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[discounts] Stripe discount removal pass failed', customer.id, e);
+    }
   } else {
     if (!customer.discount || customer.discount.status !== 'pending') {
       return NextResponse.json({ error: 'No pending request for this customer.' }, { status: 409 });

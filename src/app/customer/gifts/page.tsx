@@ -90,7 +90,7 @@ function GiftCard({ g }: { g: BoughtGift }) {
         </p>
         <div className="mt-5 flex justify-center">
           <div className="bg-white rounded-2xl p-3 border border-gold/30">
-            <QRCodeSVG value={g.qr} size={176} />
+            <QRCodeSVG value={g.qr ?? g.shortCode} size={176} />
           </div>
         </div>
         <p className="text-center mt-4 text-[12px] uppercase tracking-[0.2em] text-neutral-500">{t('giftCard.giftCode')}</p>
@@ -172,7 +172,7 @@ function MyGiftRow({ g }: { g: MyGift }) {
         <div className="mt-3">
           <div className="flex justify-center">
             <div className="bg-white rounded-2xl p-3 border border-neutral-200">
-              <QRCodeSVG value={g.qr} size={150} />
+              <QRCodeSVG value={g.qr ?? g.shortCode} size={150} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3">
@@ -207,6 +207,7 @@ export default function GiftsPage() {
   const [recipientName, setRecipientName] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [payPrice, setPayPrice] = useState(0);
+  const [cardFeeUpTo, setCardFeeUpTo] = useState(0);
   const [payServiceName, setPayServiceName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -257,6 +258,7 @@ export default function GiftsPage() {
       const svc = services.find((s) => s.id === serviceId);
       setPayPrice(d.amount);
       setPayServiceName(svc?.name || 'Haircut');
+      setCardFeeUpTo(d.cardFeeUpTo ?? 0);
       setClientSecret(d.clientSecret);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('gifts.couldNotStartPayment'));
@@ -331,6 +333,8 @@ export default function GiftsPage() {
         <PaymentStep
           clientSecret={clientSecret}
           amount={payPrice}
+          manualCapture
+          feeInfo={cardFeeUpTo > 0 ? { maxFee: cardFeeUpTo, mode: 'now' } : null}
           summary={{ serviceName: `Gift — ${payServiceName}`, totalPrice: payPrice, amountLabel: 'Total due now' }}
           onSuccess={(piId) => void finishPurchase(piId)}
           onBack={() => setClientSecret('')}

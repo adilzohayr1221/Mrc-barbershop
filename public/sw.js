@@ -1,7 +1,11 @@
 /* MRC Barbershops service worker.
    - App pages and API: always network (booking data must stay fresh).
    - Map tiles (Esri satellite + labels): cache-first on the device, so the
-     map opens instantly on repeat visits, even on a weak connection. */
+     map opens instantly on repeat visits, even on a weak connection.
+   - Apple Maps (MapKit JS): NEVER intercepted and NEVER cached — the
+     /api/mapkit/token route and every Apple host go straight to the
+     network (see isMapKitRequest below). A delayed or stale token is
+     exactly what pushes the map onto its Leaflet fallback. */
 
 const TILE_CACHE = 'mrc-tiles-v1';
 const MAX_TILES = 300; // bound on-device storage; oldest tiles evicted first
@@ -11,6 +15,19 @@ function isTileRequest(url) {
     url.hostname === 'server.arcgisonline.com' &&
     url.pathname.indexOf('/tile/') !== -1
   );
+}
+
+function isMapKitRequest(url) {
+  // The MapKit authorization token (same-origin) …
+  if (
+    url.origin === self.location.origin &&
+    url.pathname.indexOf('/api/mapkit/') === 0
+  ) {
+    return true;
+  }
+  // … and every Apple host: the MapKit JS bundle (cdn.apple-mapkit.com)
+  // plus the map-data/config edge hosts, all under apple.com.
+  return url.hostname === 'apple.com' || url.hostname.slice(-10) === '.apple.com';
 }
 
 async function trimTileCache() {
@@ -74,6 +91,11 @@ self.addEventListener('fetch', (event) => {
   } catch (_) {
     return;
   }
+  // Apple Maps traffic (token route + all Apple hosts): straight to the
+  // network, never intercepted, never cached. (This only makes explicit
+  // what the rules below already implied — nothing below ever responded
+  // to these requests — so a future edit cannot swallow them by accident.)
+  if (isMapKitRequest(url)) return;
   // Same-origin (pages, API, assets): default network behavior, never cached here.
   if (url.origin === self.location.origin) return;
   if (isTileRequest(url)) {
