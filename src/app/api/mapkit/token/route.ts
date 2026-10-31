@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { createPrivateKey, sign } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,33 @@ export const dynamic = 'force-dynamic';
 // most of that window.
 const TOKEN_TTL_SECONDS = 1800;
 const TOKEN_ORIGIN = 'https://mrc-barbershop.vercel.app';
+// MapKit JS tokens are origin-bound, and the app is served from more
+// than one of our own origins: the customer site at the main domain,
+// and the iOS app shell (Capacitor server.url) at the alias domain
+// below. A token minted for the wrong origin makes Apple refuse the
+// street tiles — the map frame and pins render over an empty grid —
+// so the token is minted for the requesting page's origin,
+// allowlisted to exactly our own origins; anything else gets the
+// main-domain token.
+const ALLOWED_TOKEN_ORIGINS = new Set([
+  TOKEN_ORIGIN,
+  'https://mrc-barbershop-mrc-0043.vercel.app',
+]);
+
+function tokenOrigin(request: NextRequest): string {
+  const origin = request.headers.get('origin');
+  if (origin && ALLOWED_TOKEN_ORIGINS.has(origin)) return origin;
+  const referer = request.headers.get('referer');
+  if (referer) {
+    try {
+      const refererOrigin = new URL(referer).origin;
+      if (ALLOWED_TOKEN_ORIGINS.has(refererOrigin)) return refererOrigin;
+    } catch {
+      // Unparseable referer — fall through to the default origin.
+    }
+  }
+  return TOKEN_ORIGIN;
+}
 
 function base64url(data: Buffer | string): string {
   return Buffer.from(data)
@@ -21,7 +48,7 @@ function base64url(data: Buffer | string): string {
     .replace(/=+$/, '');
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const teamId = process.env.MAPKIT_TEAM_ID;
   const keyId = process.env.MAPKIT_KEY_ID;
   const rawKey = process.env.MAPKIT_PRIVATE_KEY;
@@ -37,7 +64,7 @@ export async function GET() {
     const now = Math.floor(Date.now() / 1000);
     const header = base64url(JSON.stringify({ alg: 'ES256', kid: keyId, typ: 'JWT' }));
     const payload = base64url(
-      JSON.stringify({ iss: teamId, iat: now, exp: now + TOKEN_TTL_SECONDS, origin: TOKEN_ORIGIN })
+      JSON.stringify({ iss: teamId, iat: now, exp: now + TOKEN_TTL_SECONDS, origin: tokenOrigin(request) })
     );
     const signingInput = `${header}.${payload}`;
     // JWS requires the raw R||S signature form (IEEE P1363), not DER.
