@@ -98,14 +98,18 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         mapView.showsScale = false
         mapView.isPitchEnabled = false
         mapView.isRotateEnabled = false
-        // The map is a fixed locator card inside the scrolling customer
-        // page: a finger drag on it must scroll the PAGE, never pan the
-        // map, and pinch must not zoom it — the owner reported the map
-        // "moves in the screen". Programmatic moves are unaffected:
-        // the +/− buttons, pin-selection fly-to and locate-me all set
-        // the region in code and keep working.
-        mapView.isScrollEnabled = false
-        mapView.isZoomEnabled = false
+        // NORMAL Apple Maps behavior, as the owner ordered it restored
+        // (2026-11-01: "when it was normal it moved easily and stayed
+        // in its place — it does not go out of the frame"): the view
+        // itself stays glued in its card slot in the page (it is
+        // embedded in the WebView's scroll view), the map surface is
+        // clipped inside the gold frame, and INSIDE the map a finger
+        // drag pans and a pinch zooms, exactly like the Maps app, so
+        // the customer can explore — find his own location and the
+        // other shop. The +/− buttons, pin-selection fly-to and
+        // locate-me keep working alongside the gestures.
+        mapView.isScrollEnabled = true
+        mapView.isZoomEnabled = true
         mapView.showsUserLocation = false
         mapView.layer.cornerRadius = 20
         mapView.clipsToBounds = true
@@ -172,36 +176,6 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         divider.tag = 9001
         zoomStack.addSubview(divider)
         addSubview(zoomStack)
-    }
-
-    // MARK: Touch routing
-
-    /// The map is a card embedded in the scrolling page: a drag that
-    /// starts on the map must scroll the PAGE, not die on the map (the
-    /// owner's words: "I'm trying to move it and this version doesn't
-    /// move" — as a floating overlay the map swallowed his finger and
-    /// neither the map nor the page moved). Only touches that belong
-    /// to the map are kept: the on-map buttons (locate / zoom — the
-    /// super hit-test returns them and they pass through untouched)
-    /// and taps close enough to a pin to select it. Everything else
-    /// returns nil, so the touch falls through to the page beneath
-    /// and scrolls normally.
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
-        if hit === self || hit === frameView || hit === mapView {
-            return isNearPin(point) ? hit : nil
-        }
-        return hit
-    }
-
-    private func isNearPin(_ point: CGPoint) -> Bool {
-        for annotation in mapView.annotations {
-            let pinPoint = mapView.convert(annotation.coordinate, toPointTo: self)
-            if hypot(pinPoint.x - point.x, pinPoint.y - point.y) <= 30 {
-                return true
-            }
-        }
-        return false
     }
 
     // MARK: Layout

@@ -64,12 +64,12 @@
  *   the web's exact message string.
  * - Scroll: none needed, by construction. The plugin embeds the
  *   native map INSIDE the WebView's scroll view, so the map is part
- *   of the page: it scrolls with the content exactly (no lag, no
- *   drift, no floating overlay), and a drag that starts on the map
- *   scrolls the page — the native side passes those touches through
- *   and keeps only pin taps and its own buttons. Frames are re-sent
- *   only when the layout itself changes (resize / data), never on
- *   scroll.
+ *   of the page: its card scrolls with the content exactly (no lag,
+ *   no drift, no floating overlay). Inside the map, gestures are
+ *   NORMAL Apple Maps (owner's restored spec, 2026-11-01): a drag
+ *   pans the map and a pinch zooms it, clipped inside its frame.
+ *   Frames are re-sent only when the layout itself changes
+ *   (resize / data), never on scroll.
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';

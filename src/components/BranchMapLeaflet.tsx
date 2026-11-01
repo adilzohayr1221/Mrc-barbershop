@@ -36,7 +36,30 @@ function FitBounds({ branches, salonPins }: { branches: Branch[]; salonPins: Sal
       ...salonPins.map((s) => [s.lat, s.lng] as [number, number]),
     ];
     if (pts.length > 1) {
-      map.fitBounds(L.latLngBounds(pts), { padding: [52, 52] });
+      // Center the pins as one group with generous breathing room
+      // (owner fix, 2026-11-01 — a tight bounding fit left "the pins
+      // at the edges"): fit bounds built from the midpoint with spans
+      // 2.6× the pins' own spread, mirroring the native/MapKit fit.
+      let minLat = Infinity,
+        maxLat = -Infinity,
+        minLng = Infinity,
+        maxLng = -Infinity;
+      for (const [lat, lng] of pts) {
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+      }
+      const cLat = (minLat + maxLat) / 2;
+      const cLng = (minLng + maxLng) / 2;
+      const sLat = Math.max((maxLat - minLat) * 2.6, 0.014) / 2;
+      const sLng = Math.max((maxLng - minLng) * 2.6, 0.014) / 2;
+      map.fitBounds(
+        L.latLngBounds([
+          [cLat - sLat, cLng - sLng],
+          [cLat + sLat, cLng + sLng],
+        ])
+      );
     } else if (pts.length === 1) {
       map.setView(pts[0], 14);
     }

@@ -126,7 +126,15 @@ export default function BranchMapNative({
   }, [dataKey]);
 
   // ---- Selection sync (card taps fly; pin-tap echoes are idempotent
-  // on the native side — it skips the fly-to when already centered) ----
+  // on the native side — it skips the fly-to when already centered).
+  // The FIRST selection change after mount is the page's automatic
+  // pick (it selects the first/nearest branch as soon as the list
+  // loads) — it must NOT fly: flying there at street zoom throws away
+  // the all-pins fit and opens the map zoomed onto one pin (owner
+  // report, 2026-11-01). The Leaflet and MapKit engines skip exactly
+  // this first change; mirror them. Later changes are the user's own
+  // taps and fly as before. ----
+  const flySkipRef = useRef(true);
   useEffect(() => {
     if (lastSelectedRef.current === undefined) return;
     if (lastSelectedRef.current === selectedId) return;
@@ -134,7 +142,9 @@ export default function BranchMapNative({
     const controller = controllerRef.current;
     const attachPromise = attachPromiseRef.current;
     if (!controller || !attachPromise) return;
-    void attachPromise.then(() => controller.setSelected(selectedId, true));
+    const flyTo = !flySkipRef.current;
+    flySkipRef.current = false;
+    void attachPromise.then(() => controller.setSelected(selectedId, flyTo));
   }, [selectedId]);
 
   return (
