@@ -174,6 +174,36 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         addSubview(zoomStack)
     }
 
+    // MARK: Touch routing
+
+    /// The map is a card embedded in the scrolling page: a drag that
+    /// starts on the map must scroll the PAGE, not die on the map (the
+    /// owner's words: "I'm trying to move it and this version doesn't
+    /// move" — as a floating overlay the map swallowed his finger and
+    /// neither the map nor the page moved). Only touches that belong
+    /// to the map are kept: the on-map buttons (locate / zoom — the
+    /// super hit-test returns them and they pass through untouched)
+    /// and taps close enough to a pin to select it. Everything else
+    /// returns nil, so the touch falls through to the page beneath
+    /// and scrolls normally.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        if hit === self || hit === frameView || hit === mapView {
+            return isNearPin(point) ? hit : nil
+        }
+        return hit
+    }
+
+    private func isNearPin(_ point: CGPoint) -> Bool {
+        for annotation in mapView.annotations {
+            let pinPoint = mapView.convert(annotation.coordinate, toPointTo: self)
+            if hypot(pinPoint.x - point.x, pinPoint.y - point.y) <= 30 {
+                return true
+            }
+        }
+        return false
+    }
+
     // MARK: Layout
 
     override func layoutSubviews() {

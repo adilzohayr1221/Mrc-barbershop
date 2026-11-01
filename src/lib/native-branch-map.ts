@@ -19,9 +19,11 @@
  * - The web owns the page: branch data, selection state, branch cards.
  *   The native side is a slave view: data + selection flow DOWN through
  *   method calls; user intent flows UP through events.
- * - Coordinates are CSS pixels from getBoundingClientRect(), which are
- *   UIKit points in the WebView's viewport space. The native plugin
- *   adds the WebView's frame origin itself — send raw client rects.
+ * - Coordinates are CSS pixels in DOCUMENT space: the placeholder's
+ *   getBoundingClientRect() plus the window scroll offsets. The
+ *   plugin embeds the map inside the WebView's scroll view at
+ *   exactly that document rect, so web and native agree by
+ *   construction — safe-area insets included.
  * - Detection uses the app's established native signal (same as
  *   src/lib/haptics.ts): window.Capacitor?.isNativePlatform(), PLUS
  *   platform 'ios', PLUS Capacitor.isPluginAvailable('BranchMap').
@@ -60,11 +62,14 @@
  *   sits). A successful locate emits userLocated so the page can fill
  *   the same state the web locate fills; failures emit locateError with
  *   the web's exact message string.
- * - Scroll: while the page scrolls, the native map is repositioned from
- *   rAF-throttled rect updates. There can be a frame or two of lag on a
- *   hard fling — the placeholder underneath is the same size, so the
- *   page never jumps. Touches that start on the map pan the map (the
- *   page does not scroll), exactly like the web engines.
+ * - Scroll: none needed, by construction. The plugin embeds the
+ *   native map INSIDE the WebView's scroll view, so the map is part
+ *   of the page: it scrolls with the content exactly (no lag, no
+ *   drift, no floating overlay), and a drag that starts on the map
+ *   scrolls the page — the native side passes those touches through
+ *   and keeps only pin taps and its own buttons. Frames are re-sent
+ *   only when the layout itself changes (resize / data), never on
+ *   scroll.
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -244,11 +249,10 @@ export class NativeBranchMapController {
     });
     this.shown = true;
 
-    // Rect sync: any layout-affecting signal funnels into one
-    // rAF-throttled updateFrame call.
+    // Frame sync: layout changes only — the map scrolls with the
+    // page natively, so there is deliberately no scroll listener.
     this.resizeObserver = new ResizeObserver(this.scheduleSync);
     this.resizeObserver.observe(el);
-    window.addEventListener('scroll', this.scheduleSync, { passive: true, capture: true });
     window.addEventListener('resize', this.scheduleSync, { passive: true });
     window.visualViewport?.addEventListener('resize', this.scheduleSync, { passive: true });
     this.sync();
@@ -278,7 +282,6 @@ export class NativeBranchMapController {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
-    window.removeEventListener('scroll', this.scheduleSync, { capture: true });
     window.removeEventListener('resize', this.scheduleSync);
     window.visualViewport?.removeEventListener('resize', this.scheduleSync);
     await Promise.all(this.listeners.map((l) => l.remove().catch(() => undefined)));
@@ -293,7 +296,14 @@ export class NativeBranchMapController {
   private currentFrame(): NativeMapFrame {
     const rect = this.el?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0, width: 0, height: 0 };
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    // Document space: client rect + scroll offsets. The native side
+    // places the map in the scroll view's content at this rect.
+    return {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
   }
 
   private scheduleSync = (): void => {
@@ -311,7 +321,12 @@ export class NativeBranchMapController {
     // letting it float over unrelated content.
     const visible = rect.bottom > 0 && rect.top < window.innerHeight && rect.width > 0;
     void BranchMapNative.updateFrame({
-      frame: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      frame: {
+        x: rect.left + window.scrollX,
+        y: rect.top + window.scrollY,
+        width: rect.width,
+        height: rect.height,
+      },
       visible,
     }).catch(() => undefined);
   }

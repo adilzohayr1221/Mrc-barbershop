@@ -8,10 +8,11 @@ import UIKit
 /// The web layer (see src/lib/native-branch-map.ts) keeps owning the
 /// page: branch data, selection state, and the framed placeholder's
 /// on-screen rect. This plugin owns exactly one thing — a real
-/// MKMapView (BranchMapView) floated over the WebView at that rect.
+/// MKMapView (BranchMapView) embedded in the WebView's scroll view
+/// at that rect, so the map is part of the page and scrolls with it.
 ///
 /// JS API (all coordinates are CSS pixels == UIKit points in the
-/// WebView's viewport space):
+/// document's coordinate space):
 ///   show({ frame, branches?, salons?, selectedId? })  create + reveal
 ///   hide()                                            conceal (kept alive)
 ///   updateFrame({ frame, visible })                   scroll/resize sync
@@ -62,6 +63,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Native map host view is unavailable")
                 return
             }
+            self.attachToScrollView(view)
             if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
             if dataProvided, let data = self.storedData {
                 view.setData(branches: data.branches, salons: data.salons)
@@ -85,6 +87,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             guard let self else { call.resolve(); return }
             if let view = self.mapView {
+                self.attachToScrollView(view)
                 if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
                 view.isHidden = !(self.isShown && visible)
             }
@@ -123,11 +126,11 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Host view management
 
-    /// Creates the map view on first use and floats it directly above
-    /// the WebView inside the bridge view controller's view.
+    /// Creates the map view on first use and embeds it in the
+    /// WebView's scroll view (see attachToScrollView).
     private func ensureMapView() -> BranchMapView? {
         if let mapView { return mapView }
-        guard let bridge, let hostView = bridge.viewController?.view else { return nil }
+        guard let bridge else { return nil }
 
         let view = BranchMapView(frame: lastHostFrame == .zero
             ? CGRect(x: 0, y: 0, width: 320, height: 352)
@@ -147,11 +150,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         view.onLocateError = { [weak self] message in
             self?.notifyListeners("locateError", data: ["message": message])
         }
-        if let webView = bridge.webView {
-            hostView.insertSubview(view, aboveSubview: webView)
-        } else {
-            hostView.addSubview(view)
-        }
+        attachToScrollView(view)
         mapView = view
         if let storedData {
             view.setData(branches: storedData.branches, salons: storedData.salons)
@@ -162,12 +161,35 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         return view
     }
 
+    /// Embeds the map in the WebView's scroll view so it scrolls with
+    /// the page exactly — part of the content, positioned in document
+    /// coordinates — instead of floating above the WebView and being
+    /// chased across the screen by JS rect updates on every scroll
+    /// event (the old design visibly slid and drifted out of its
+    /// slot, and swallowed drags that should have scrolled the page).
+    /// Re-called on show/updateFrame in case the WebView was
+    /// recreated. Falls back to floating above the WebView only if
+    /// the scroll view is unavailable.
+    private func attachToScrollView(_ view: BranchMapView) {
+        if let scrollView = bridge?.webView?.scrollView {
+            if view.superview !== scrollView {
+                view.removeFromSuperview()
+                scrollView.addSubview(view)
+            }
+        } else if let bridge, let hostView = bridge.viewController?.view,
+                  let webView = bridge.webView {
+            if view.superview !== hostView {
+                view.removeFromSuperview()
+                hostView.insertSubview(view, aboveSubview: webView)
+            }
+        }
+    }
+
     // MARK: - Payload parsing
 
-    /// Converts a JS rect ({x, y, width, height} in WebView viewport
-    /// points) into the host view's coordinate space by adding the
-    /// WebView's own origin (zero when the WebView fills the screen,
-    /// which is the Capacitor shell's layout).
+    /// Parses a JS rect ({x, y, width, height} in document-space
+    /// points — the same coordinate space as the WebView scroll
+    /// view's content, where the map is embedded).
     private func parseFrame(_ call: CAPPluginCall) -> CGRect? {
         guard let rect = call.getObject("frame"),
               let x = (rect["x"] as? NSNumber)?.doubleValue,
@@ -176,8 +198,13 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
               let height = (rect["height"] as? NSNumber)?.doubleValue,
               width > 0, height > 0
         else { return nil }
-        let origin = bridge?.webView?.frame.origin ?? .zero
-        return CGRect(x: x + Double(origin.x), y: y + Double(origin.y), width: width, height: height)
+        // The rect arrives in document coordinates; the map lives in
+        // the WebView's scroll view, whose content space IS the
+        // document — there is no origin conversion to get wrong (the
+        // old viewport-space assumption misplaced the map, so it
+        // covered the card above its slot and left a gold strip of
+        // the placeholder showing below it).
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     private func parsePins(_ raw: [Any]?) -> [BranchPinData] {
