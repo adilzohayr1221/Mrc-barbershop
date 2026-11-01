@@ -44,6 +44,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     private var salonAnnotations: [ShopAnnotation] = []
     private var selectedId: String?
     private var didFitInitial = false
+    private var pendingInitialFit = false
     private var readyFired = false
     private var pendingLocate = false
 
@@ -189,6 +190,14 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         zoomInButton.frame = CGRect(x: 0, y: 0, width: 40, height: 40)
         zoomOutButton.frame = CGRect(x: 0, y: 41, width: 40, height: 40)
         zoomStack.viewWithTag(9001)?.frame = CGRect(x: 0, y: 40, width: 40, height: 1)
+        // Deferred first fit: setData arrived before the map had a real
+        // size — run the fit now, against the final laid-out bounds.
+        if pendingInitialFit, !didFitInitial,
+           mapView.bounds.width > 0, mapView.bounds.height > 0 {
+            pendingInitialFit = false
+            didFitInitial = true
+            fitAllPins(animated: false)
+        }
     }
 
     // MARK: Data & selection (called by the plugin)
@@ -200,10 +209,20 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         mapView.addAnnotations(branchAnnotations + salonAnnotations)
         applySelectionStyles()
         // Fit on first data only — the web engines fit on mount and never
-        // refit when data/selection changes afterwards.
+        // refit when data/selection changes afterwards. The fit must be
+        // computed against the map's real laid-out size: setData can
+        // arrive before the first layoutSubviews (the plugin calls it in
+        // the same turn that creates/frames this view, and mapView.frame
+        // is only assigned in layoutSubviews), and a fit computed
+        // against zero bounds leaves the pins flush with the frame
+        // edges. Defer to layoutSubviews in that case.
         if !didFitInitial, !branchAnnotations.isEmpty || !salonAnnotations.isEmpty {
-            didFitInitial = true
-            fitAllPins(animated: false)
+            if mapView.bounds.width > 0, mapView.bounds.height > 0 {
+                didFitInitial = true
+                fitAllPins(animated: false)
+            } else {
+                pendingInitialFit = true
+            }
         }
     }
 
@@ -245,9 +264,15 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
             let point = MKMapPoint(annotation.coordinate)
             rect = rect.union(MKMapRect(x: point.x, y: point.y, width: 0.1, height: 0.1))
         }
-        // Web fitBounds padding is [52, 52].
+        // Padding is measured to each pin's coordinate point, so it
+        // must also clear what floats around the point: the pin glyph
+        // itself (34×47, its top 41 pt above the tip) and the controls
+        // overlaid on the map — the locate fab at the top-left and the
+        // +/− zoom stack at the right-center, whose inner edge sits
+        // 56 pt from the right. The web fitBounds padding is [52, 52];
+        // the top and right get the extra room those overlays need.
         mapView.setVisibleMapRect(rect,
-                                  edgePadding: UIEdgeInsets(top: 52, left: 52, bottom: 52, right: 52),
+                                  edgePadding: UIEdgeInsets(top: 76, left: 68, bottom: 56, right: 100),
                                   animated: animated)
     }
 
