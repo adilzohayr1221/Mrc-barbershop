@@ -212,7 +212,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         applySelectionStyles()
         if flyTo, let id,
            let annotation = branchAnnotations.first(where: { $0.pinId == id }) {
-            flyTo(annotation)
+            flyToAnnotation(annotation)
         }
     }
 
@@ -251,7 +251,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
                                   animated: animated)
     }
 
-    private func flyTo(_ annotation: ShopAnnotation) {
+    private func flyToAnnotation(_ annotation: ShopAnnotation) {
         // Web FlyToSelected: skip when already centered there at street
         // zoom — re-flying to the same spot makes the map shake.
         let target = annotation.coordinate
