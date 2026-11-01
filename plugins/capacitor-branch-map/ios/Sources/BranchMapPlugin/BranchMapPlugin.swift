@@ -28,6 +28,21 @@ import UIKit
 /// circular hole in the map's mask there, so the button — web
 /// content that must ALWAYS stay above the map (owner's order,
 /// 2026-11-01) — shows through and keeps its touches.
+///
+/// Scroll-synchronous clipping: the JS bridge re-sends clipTop /
+/// cutout on scroll, but that round trip (scroll event → rAF →
+/// measure → bridge → here) trails a flick or momentum scroll by
+/// many frames, and the owner's recording showed the map painting
+/// over the header mid-scroll with the clip line stranded behind.
+/// Both values are document-space positions of viewport-anchored
+/// elements (sticky header, position:fixed button), so between JS
+/// updates they shift EXACTLY 1:1 with the scroll view's
+/// contentOffset. The plugin therefore anchors each value to the
+/// contentOffset at the moment it arrives and re-applies it
+/// natively on every contentOffset KVO — synchronous with the
+/// scroll itself, before the frame composites. JS syncs keep
+/// re-anchoring (scroll end, resize, button drags), so at rest the
+/// values are exactly the JS-measured ones.
 ///   setData({ branches, salons })                     replace pins
 ///   setSelected({ id, flyTo? })                       selection echo
 ///   locateMe()                                        center on the user
@@ -59,6 +74,20 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     private var lastCutout: CGRect?
     private var storedData: (branches: [BranchPinData], salons: [BranchPinData])?
     private var storedSelectedId: String?
+    /// The last `visible` the JS bridge sent (updateFrame). The
+    /// native scroll sync below may hide the map earlier (fully
+    /// covered by the header) but never overrides a JS park.
+    private var jsVisible = true
+    // Scroll-sync anchors: the JS-measured clip/cutout paired with
+    // the scroll view's contentOffset at arrival. See the class doc.
+    private var clipAnchor: (docY: Double, offsetY: CGFloat)?
+    private var cutoutAnchor: (docRect: CGRect, offset: CGPoint)?
+    private var scrollViewObservation: NSKeyValueObservation?
+    private weak var observedScrollView: UIScrollView?
+
+    deinit {
+        scrollViewObservation?.invalidate()
+    }
 
     // MARK: - Public bridge methods
 
@@ -82,6 +111,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
             self.attachToScrollView(view)
             if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
             self.applyClip(view)
+            self.recordAnchors()
             if dataProvided, let data = self.storedData {
                 view.setData(branches: data.branches, salons: data.salons)
             }
@@ -103,12 +133,14 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         if let clipTop = call.getDouble("clipTop") { lastClipTop = clipTop }
         updateCutout(from: call)
         let visible = call.getBool("visible") ?? true
+        jsVisible = visible
         DispatchQueue.main.async { [weak self] in
             guard let self else { call.resolve(); return }
             if let view = self.mapView {
                 self.attachToScrollView(view)
                 if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
                 self.applyClip(view)
+                self.recordAnchors()
                 view.isHidden = !(self.isShown && visible)
             }
             call.resolve()
@@ -141,13 +173,71 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     /// conversion always uses the current frame. The clip half is a
     /// no-op when the web layer never sent a clipTop (older deploys).
     private func applyClip(_ view: BranchMapView) {
-        if let lastClipTop {
-            view.setTopClip(CGFloat(lastClipTop) - view.frame.minY)
+        applyClip(view, docClipY: lastClipTop, docCutout: lastCutout)
+    }
+
+    private func applyClip(_ view: BranchMapView, docClipY: Double?, docCutout: CGRect?) {
+        if let docClipY {
+            view.setTopClip(CGFloat(docClipY) - view.frame.minY)
         }
-        if let lastCutout {
-            view.setCutout(lastCutout.offsetBy(dx: -view.frame.minX, dy: -view.frame.minY))
+        if let docCutout {
+            view.setCutout(docCutout.offsetBy(dx: -view.frame.minX, dy: -view.frame.minY))
         } else {
             view.setCutout(nil)
+        }
+    }
+
+    /// Anchors the just-applied JS clip/cutout values to the scroll
+    /// view's CURRENT contentOffset, so syncClipToScrollOffset can
+    /// track them natively between JS updates (see the class doc).
+    private func recordAnchors() {
+        guard let offset = bridge?.webView?.scrollView.contentOffset else { return }
+        if let lastClipTop {
+            clipAnchor = (docY: lastClipTop, offsetY: offset.y)
+        }
+        if let lastCutout {
+            cutoutAnchor = (docRect: lastCutout, offset: offset)
+        } else {
+            cutoutAnchor = nil
+        }
+    }
+
+    /// Observes the WebView scroll view's contentOffset (once per
+    /// scroll-view instance; re-registered if the WebView is ever
+    /// recreated). The callback lands on the main thread, in step
+    /// with the scroll itself — unlike the JS bridge round trip.
+    private func observeScrollViewIfNeeded() {
+        guard let scrollView = bridge?.webView?.scrollView else { return }
+        if observedScrollView === scrollView { return }
+        scrollViewObservation?.invalidate()
+        observedScrollView = scrollView
+        scrollViewObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+            self?.syncClipToScrollOffset()
+        }
+    }
+
+    /// Re-applies the clip/cutout for the scroll view's current
+    /// offset: the anchored document-space values shifted by the
+    /// offset delta since they were anchored. Also hides the map
+    /// the moment the header band covers it completely — in step
+    /// with the scroll, not when the next JS `visible` lands.
+    private func syncClipToScrollOffset() {
+        guard isShown, let view = mapView,
+              let offset = bridge?.webView?.scrollView.contentOffset else { return }
+        var docClipY = lastClipTop
+        if let clipAnchor {
+            docClipY = clipAnchor.docY + Double(offset.y - clipAnchor.offsetY)
+        }
+        var docCutout = lastCutout
+        if let cutoutAnchor {
+            docCutout = cutoutAnchor.docRect.offsetBy(
+                dx: offset.x - cutoutAnchor.offset.x,
+                dy: offset.y - cutoutAnchor.offset.y)
+        }
+        applyClip(view, docClipY: docClipY, docCutout: docCutout)
+        if let docClipY {
+            let cut = CGFloat(docClipY) - view.frame.minY
+            view.isHidden = !jsVisible || cut >= view.frame.height
         }
     }
 
@@ -209,6 +299,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         attachToScrollView(view)
         mapView = view
         applyClip(view)
+        recordAnchors()
         if let storedData {
             view.setData(branches: storedData.branches, salons: storedData.salons)
         }
@@ -233,6 +324,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
                 view.removeFromSuperview()
                 scrollView.addSubview(view)
             }
+            observeScrollViewIfNeeded()
         } else if let bridge, let hostView = bridge.viewController?.view,
                   let webView = bridge.webView {
             if view.superview !== hostView {

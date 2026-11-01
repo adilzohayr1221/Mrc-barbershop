@@ -45,6 +45,14 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     private var selectedId: String?
     private var didFitInitial = false
     private var pendingInitialFit = false
+    // The opening fit stays authoritative until the customer himself
+    // moves the map (pan/pinch/double-tap gesture, +/− buttons,
+    // selection fly-to, locate-me). Until then, layoutSubviews
+    // re-applies the fit whenever the map's bounds change — see the
+    // note there for why a one-shot fit was not enough.
+    private var userMovedMap = false
+    /// The map bounds the last fitAllPins run was computed against.
+    private var fittedSize: CGSize = .zero
     private var readyFired = false
     private var pendingLocate = false
 
@@ -138,6 +146,13 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         mapView.clipsToBounds = true
         frameView.addSubview(mapView)
 
+        // Hand control of the region to the customer only when HE
+        // moves the map: watch the map's own pan / pinch / double-tap
+        // recognizers (observing only — their behavior is untouched).
+        // Programmatic region changes (the fit, resize re-derivation)
+        // never pass through these, so they can't fake a user move.
+        installGestureObservers()
+
         // Inner hairline ring at the frame's inner edge (above the map).
         ringLayer.fillColor = UIColor.clear.cgColor
         ringLayer.strokeColor = UIColor(red: 122.0 / 255, green: 95.0 / 255, blue: 20.0 / 255, alpha: 0.35).cgColor
@@ -225,16 +240,71 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         zoomInButton.frame = CGRect(x: 0, y: 0, width: 40, height: 40)
         zoomOutButton.frame = CGRect(x: 0, y: 41, width: 40, height: 40)
         zoomStack.viewWithTag(9001)?.frame = CGRect(x: 0, y: 40, width: 40, height: 1)
-        // Deferred first fit: setData arrived before the map had a real
-        // size — run the fit now, against the final laid-out bounds.
+        // The opening fit is NOT a one-shot. It is first computed
+        // against whatever bounds the map happens to have at that
+        // moment — at attach the view was just created and the plugin
+        // (re)sets its frame from JS bridge values afterwards — and
+        // every later bounds change makes MapKit re-derive the
+        // visible region on its own. In builds 6–9 nothing ever
+        // corrected that drift, so the map could settle kilometers
+        // off the pins (owner captures: the fitted view translated
+        // south over the harbor, both pins off-screen, stable for
+        // the whole session). So: deferred first fit as before, and
+        // after it, until the customer himself moves the map, EVERY
+        // bounds change re-applies the exact group fit against the
+        // settled bounds. The opening view is the two-pin fit by
+        // construction, not by timing luck.
         if pendingInitialFit, !didFitInitial,
            mapView.bounds.width > 0, mapView.bounds.height > 0 {
             pendingInitialFit = false
             didFitInitial = true
             fitAllPins(animated: false)
+        } else if didFitInitial, !userMovedMap,
+                  (!branchAnnotations.isEmpty || !salonAnnotations.isEmpty),
+                  mapView.bounds.width > 0, mapView.bounds.height > 0,
+                  mapView.bounds.size != fittedSize {
+            fitAllPins(animated: false)
         }
         // The clip mask is sized from bounds — keep it in step.
         updateClipMask()
+    }
+
+    /// Recognizers already wired to mapGestureBegan (MapKit may not
+    /// install its recognizers until the map is in a window, so this
+    /// runs again from didMoveToWindow; the set keeps it idempotent).
+    private var wiredGestureRecognizers = Set<ObjectIdentifier>()
+
+    private func installGestureObservers() {
+        for recognizer in mapView.gestureRecognizers ?? [] {
+            guard recognizer is UIPanGestureRecognizer
+                || recognizer is UIPinchGestureRecognizer
+                || (recognizer as? UITapGestureRecognizer)?.numberOfTapsRequired == 2
+            else { continue }
+            if wiredGestureRecognizers.insert(ObjectIdentifier(recognizer)).inserted {
+                recognizer.addTarget(self, action: #selector(mapGestureBegan(_:)))
+            }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        installGestureObservers()
+        // One deferred re-check after attach: launch-time bounds and
+        // safe-area insets can settle a beat after the first layout
+        // pass, without a further layoutSubviews. If the customer has
+        // not touched the map by then, re-apply the opening fit once
+        // against the settled state (idempotent when nothing moved).
+        guard window != nil, didFitInitial, !userMovedMap else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self, !self.userMovedMap,
+                  self.mapView.bounds.width > 0, self.mapView.bounds.height > 0
+            else { return }
+            self.fitAllPins(animated: false)
+        }
+    }
+
+    @objc private func mapGestureBegan(_ recognizer: UIGestureRecognizer) {
+        if recognizer.state == .began { userMovedMap = true }
     }
 
     // MARK: Top clip & AI cutout (never paint over the header / AI button)
@@ -383,6 +453,9 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     private func fitAllPins(animated: Bool) {
         let annotations = branchAnnotations + salonAnnotations
         guard let first = annotations.first else { return }
+        // Remember the bounds this fit is computed against, so
+        // layoutSubviews can tell a settled size from a changed one.
+        fittedSize = mapView.bounds.size
         if annotations.count == 1 {
             // Web: a lone pin opens at zoom 14 (≈ 0.022° span).
             mapView.setRegion(
@@ -420,6 +493,9 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     }
 
     private func flyToAnnotation(_ annotation: ShopAnnotation) {
+        // A selection fly-to is the customer's own move (pin/card
+        // tap): the opening fit no longer overrides the region.
+        userMovedMap = true
         // Web FlyToSelected: skip when already centered there at street
         // zoom — re-flying to the same spot makes the map shake.
         let target = annotation.coordinate
@@ -440,6 +516,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     @objc private func zoomOutTapped() { adjustZoom(factor: 2.0) }
 
     private func adjustZoom(factor: Double) {
+        userMovedMap = true
         var region = mapView.region
         region.span.latitudeDelta = min(max(region.span.latitudeDelta * factor, 0.0005), 120)
         region.span.longitudeDelta = min(max(region.span.longitudeDelta * factor, 0.0005), 120)
@@ -473,6 +550,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     }
 
     private func centerOn(_ location: CLLocation) {
+        userMovedMap = true
         setLocating(false)
         onUserLocated?(location.coordinate.latitude,
                        location.coordinate.longitude,
