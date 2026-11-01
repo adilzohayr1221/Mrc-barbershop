@@ -13,15 +13,21 @@ import UIKit
 ///
 /// JS API (all coordinates are CSS pixels == UIKit points in the
 /// document's coordinate space):
-///   show({ frame, branches?, salons?, selectedId?, clipTop? })
+///   show({ frame, branches?, salons?, selectedId?, clipTop?, cutout? })
 ///                                                     create + reveal
 ///   hide()                                            conceal (kept alive)
-///   updateFrame({ frame, visible, clipTop? })         scroll/resize sync
+///   updateFrame({ frame, visible, clipTop?, cutout? }) scroll/resize sync
 /// clipTop is the document-space Y of the sticky header's bottom
 /// edge: the map is a scroll-view subview and would otherwise paint
 /// OVER the header (logo + name) when the page scrolls it up into
 /// the header band. The plugin clips the map at that line so it
 /// always stays under the header, inside its own card slot.
+/// cutout is the floating AI button's rect as [x, y, width, height]
+/// in document space (an empty array clears it; an absent key keeps
+/// the previous value, for older web deploys): the view cuts a
+/// circular hole in the map's mask there, so the button — web
+/// content that must ALWAYS stay above the map (owner's order,
+/// 2026-11-01) — shows through and keeps its touches.
 ///   setData({ branches, salons })                     replace pins
 ///   setSelected({ id, flyTo? })                       selection echo
 ///   locateMe()                                        center on the user
@@ -50,6 +56,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     private var isShown = false
     private var lastHostFrame: CGRect = .zero
     private var lastClipTop: Double?
+    private var lastCutout: CGRect?
     private var storedData: (branches: [BranchPinData], salons: [BranchPinData])?
     private var storedSelectedId: String?
 
@@ -58,6 +65,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func show(_ call: CAPPluginCall) {
         if let frame = parseFrame(call) { lastHostFrame = frame }
         if let clipTop = call.getDouble("clipTop") { lastClipTop = clipTop }
+        updateCutout(from: call)
         let dataProvided = call.getArray("branches") != nil || call.getArray("salons") != nil
         if dataProvided {
             storedData = (branches: parsePins(call.getArray("branches")),
@@ -93,6 +101,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func updateFrame(_ call: CAPPluginCall) {
         if let frame = parseFrame(call) { lastHostFrame = frame }
         if let clipTop = call.getDouble("clipTop") { lastClipTop = clipTop }
+        updateCutout(from: call)
         let visible = call.getBool("visible") ?? true
         DispatchQueue.main.async { [weak self] in
             guard let self else { call.resolve(); return }
@@ -106,14 +115,40 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// Keeps the map under the sticky header: converts the stored
-    /// document-space clip line into the view-local top clip and
-    /// hands it to the view (which masks + hit-tests accordingly).
-    /// No-op when the web layer never sent a clipTop (older deploys),
-    /// preserving the previous behavior exactly.
+    /// Parses the AI-button cutout: [x, y, width, height] in document
+    /// space sets it, an empty array clears it, and an absent key
+    /// keeps the previous value (older web deploys never send it, so
+    /// they keep the pre-cutout behavior exactly).
+    private func updateCutout(from call: CAPPluginCall) {
+        guard let raw = call.getArray("cutout") else { return }
+        if raw.count == 4,
+           let x = (raw[0] as? NSNumber)?.doubleValue,
+           let y = (raw[1] as? NSNumber)?.doubleValue,
+           let width = (raw[2] as? NSNumber)?.doubleValue,
+           let height = (raw[3] as? NSNumber)?.doubleValue,
+           width > 0, height > 0 {
+            lastCutout = CGRect(x: x, y: y, width: width, height: height)
+        } else {
+            lastCutout = nil
+        }
+    }
+
+    /// Keeps the map under the sticky header AND the floating AI
+    /// button: converts the stored document-space clip line and
+    /// cutout rect into view-local values and hands them to the view
+    /// (which masks + hit-tests accordingly). Runs on every show /
+    /// updateFrame, right after the frame is (re)applied, so the
+    /// conversion always uses the current frame. The clip half is a
+    /// no-op when the web layer never sent a clipTop (older deploys).
     private func applyClip(_ view: BranchMapView) {
-        guard let lastClipTop else { return }
-        view.setTopClip(CGFloat(lastClipTop) - view.frame.minY)
+        if let lastClipTop {
+            view.setTopClip(CGFloat(lastClipTop) - view.frame.minY)
+        }
+        if let lastCutout {
+            view.setCutout(lastCutout.offsetBy(dx: -view.frame.minX, dy: -view.frame.minY))
+        } else {
+            view.setCutout(nil)
+        }
     }
 
     @objc func setData(_ call: CAPPluginCall) {

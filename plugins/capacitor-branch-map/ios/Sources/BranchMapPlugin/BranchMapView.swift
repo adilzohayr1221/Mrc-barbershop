@@ -60,6 +60,15 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     // exactly at that line, so the map appears to slide UNDER the
     // header like ordinary page content.
     private var topClip: CGFloat = 0
+    // AI-button cutout (points, view-local): the rect of the floating
+    // AI assistant button where it overlaps this view. The button is
+    // position:fixed web content — it can be dragged anywhere,
+    // including right over the map — and the owner ordered it to
+    // ALWAYS stay above the map (2026-11-01). The mask below cuts a
+    // circular hole exactly where the button sits (it is a 56 pt
+    // round gold button), and hitTest passes its touches through, so
+    // it stays visible, tappable and draggable over the map.
+    private var cutout: CGRect?
     private let clipMaskLayer = CAShapeLayer()
 
     private static let gold = UIColor(red: 212.0 / 255, green: 175.0 / 255, blue: 55.0 / 255, alpha: 1)
@@ -228,7 +237,7 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         updateClipMask()
     }
 
-    // MARK: Top clip (never paint over the sticky header)
+    // MARK: Top clip & AI cutout (never paint over the header / AI button)
 
     /// Sets how much of the view's top (points, view-local) is clipped
     /// away because it sits under the page's sticky header band. The
@@ -243,30 +252,68 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         updateClipMask()
     }
 
+    /// Sets the floating AI button's rect (points, view-local), or
+    /// nil when the button is clear of the map. The plugin recomputes
+    /// this on every JS frame sync, in step with the top clip.
+    func setCutout(_ rect: CGRect?) {
+        let normalized = (rect?.width ?? 0) > 0 && (rect?.height ?? 0) > 0 ? rect : nil
+        guard normalized != cutout else { return }
+        cutout = normalized
+        updateClipMask()
+    }
+
     private func updateClipMask() {
-        // No clip → no mask at all, so the settled look (gold frame +
-        // drop shadow) is pixel-identical to the unclipped rendering.
-        guard topClip > 0, bounds.width > 0, bounds.height > 0 else {
+        guard bounds.width > 0, bounds.height > 0 else {
             layer.mask = nil
             return
         }
         // Clamp against the CURRENT bounds (a stored clip from a
         // taller frame must never produce a negative-height path).
         let cut = min(topClip, bounds.height)
-        // Extend the mask past the sides and the bottom by more than
-        // the drop shadow's reach (radius 24 + offset 24) so the
-        // shadow keeps spilling onto the page exactly as before; only
-        // the top is cut, in one straight line at the header's edge.
+        // The visible band starts at the header line and extends past
+        // the sides and the bottom by more than the drop shadow's
+        // reach (radius 24 + offset 24), so the shadow keeps spilling
+        // onto the page exactly as before; only the top is cut, in
+        // one straight line at the header's edge. The mask layer's
+        // frame IS the band: mask alpha outside a mask layer's frame
+        // is zero, so nothing above the header line can ever paint,
+        // whatever the path below does.
         let margin: CGFloat = 80
-        clipMaskLayer.frame = CGRect(x: -margin, y: 0,
-                                     width: bounds.width + margin * 2,
-                                     height: bounds.height + margin)
+        let bandWidth = bounds.width + margin * 2
+        let bandHeight = bounds.height - cut + margin
+        // The AI button's hole, converted to mask coordinates (the
+        // mask frame starts at (-margin, cut) in view space). Only
+        // set when the button actually overlaps the band — parts of
+        // the ellipse outside the mask frame are clipped away by the
+        // mask itself, so the full ellipse is safe to append.
+        var hole: CGRect?
+        if let cutout {
+            let shifted = CGRect(x: cutout.minX + margin, y: cutout.minY - cut,
+                                 width: cutout.width, height: cutout.height)
+            if shifted.intersects(CGRect(x: 0, y: 0, width: bandWidth, height: bandHeight)) {
+                hole = shifted
+            }
+        }
+        // No clip and no hole → no mask at all, so the settled look
+        // (gold frame + drop shadow) is pixel-identical to the
+        // unmasked rendering.
+        guard cut > 0 || hole != nil else {
+            layer.mask = nil
+            return
+        }
+        clipMaskLayer.frame = CGRect(x: -margin, y: cut,
+                                     width: bandWidth, height: bandHeight)
         clipMaskLayer.fillColor = UIColor.white.cgColor
-        clipMaskLayer.path = UIBezierPath(
-            rect: CGRect(x: 0, y: cut,
-                         width: bounds.width + margin * 2,
-                         height: bounds.height - cut + margin)
-        ).cgPath
+        // Even-odd: the ellipse is covered twice (band + hole), so it
+        // drops out of the mask — a clean round hole the exact size
+        // and place of the AI button, with the button's own round
+        // shape showing through it.
+        clipMaskLayer.fillRule = .evenOdd
+        let path = UIBezierPath(rect: CGRect(x: 0, y: 0, width: bandWidth, height: bandHeight))
+        if let hole {
+            path.append(UIBezierPath(ovalIn: hole))
+        }
+        clipMaskLayer.path = path.cgPath
         layer.mask = clipMaskLayer
     }
 
@@ -275,6 +322,13 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         // showing where the map slid under it. Touches there belong
         // to the header / web content below, never to the map.
         if point.y < topClip { return nil }
+        // Same for the AI button's hole: the button floats above the
+        // map there, so its taps and drags belong to the web layer.
+        if let cutout, cutout.width > 0, cutout.height > 0 {
+            let dx = (point.x - cutout.midX) / (cutout.width / 2)
+            let dy = (point.y - cutout.midY) / (cutout.height / 2)
+            if dx * dx + dy * dy <= 1 { return nil }
+        }
         return super.hitTest(point, with: event)
     }
 

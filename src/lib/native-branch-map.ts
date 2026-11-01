@@ -81,6 +81,18 @@
  *   side masks the map at that line, so it slides UNDER the header
  *   like ordinary page content, and hides it when the header band
  *   covers it completely.
+ * - AI button cutout (owner's order, 2026-11-01): the floating AI
+ *   assistant button ([data-ai-fab] in AiAssistant.tsx — position:
+ *   fixed, gold star circle, draggable anywhere) is web content that
+ *   can sit right over the map, and the native map painted straight
+ *   over it, hiding it (the owner: "the AI icon must ALWAYS be above
+ *   the map"). So sync() also measures the button on the same
+ *   scroll/resize cadence — plus a MutationObserver, because dragging
+ *   the button fires neither scroll nor resize — and sends `cutout`:
+ *   the button's document-space rect as [x, y, width, height], or []
+ *   when it does not overlap the map. The native side cuts a circular
+ *   hole for it in the map's mask and passes its touches through, so
+ *   the button always shows and stays tappable/draggable.
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -115,6 +127,15 @@ export interface NativeMapFrame {
   height: number;
 }
 
+/**
+ * Document-space rect of the floating AI button, in wire form:
+ * [x, y, width, height]. An empty array clears the cutout — the
+ * bridge cannot distinguish an explicit null from an absent key,
+ * and an absent key must keep the previous value (older deploys
+ * never send one), so null is never put on the wire.
+ */
+export type NativeMapCutout = [number, number, number, number];
+
 export interface PinTappedEvent {
   kind: 'branch' | 'salon';
   id: string;
@@ -138,9 +159,15 @@ interface BranchMapPlugin {
     salons?: NativeSalonInput[];
     selectedId?: string | null;
     clipTop?: number;
+    cutout?: NativeMapCutout | [];
   }): Promise<void>;
   hide(): Promise<void>;
-  updateFrame(options: { frame: NativeMapFrame; visible: boolean; clipTop: number }): Promise<void>;
+  updateFrame(options: {
+    frame: NativeMapFrame;
+    visible: boolean;
+    clipTop: number;
+    cutout: NativeMapCutout | [];
+  }): Promise<void>;
   setData(options: { branches: NativeBranchInput[]; salons: NativeSalonInput[] }): Promise<void>;
   setSelected(options: { id: string | null; flyTo?: boolean }): Promise<void>;
   locateMe(): Promise<void>;
@@ -212,6 +239,7 @@ export class NativeBranchMapController {
   private callbacks: NativeBranchMapCallbacks;
   private listeners: PluginListenerHandle[] = [];
   private resizeObserver: ResizeObserver | null = null;
+  private fabObserver: MutationObserver | null = null;
   private rafId = 0;
   private shown = false;
   private destroyed = false;
@@ -255,12 +283,14 @@ export class NativeBranchMapController {
     ]);
     if (this.destroyed) return;
 
+    const frame = this.currentFrame();
     await BranchMapNative.show({
-      frame: this.currentFrame(),
+      frame,
       branches: initial.branches,
       salons: initial.salons,
       selectedId: initial.selectedId,
       clipTop: this.currentClipTop(),
+      cutout: this.currentCutout(frame),
     });
     this.shown = true;
 
@@ -274,6 +304,18 @@ export class NativeBranchMapController {
     window.addEventListener('resize', this.scheduleSync, { passive: true });
     window.visualViewport?.addEventListener('resize', this.scheduleSync, { passive: true });
     window.addEventListener('scroll', this.scheduleSync, { passive: true });
+    // The AI button also moves WITHOUT scroll/resize: the user drags
+    // it (React re-renders it with a new inline style) and it unmounts
+    // while the chat panel is open (DOM removal). Watch for both so
+    // the cutout tracks it. sync() deduplicates, so unrelated DOM
+    // churn costs at most one measurement pass per animation frame.
+    this.fabObserver = new MutationObserver(this.scheduleSync);
+    this.fabObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style'],
+    });
     this.sync();
   }
 
@@ -301,6 +343,8 @@ export class NativeBranchMapController {
     this.destroyed = true;
     cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
+    this.fabObserver?.disconnect();
+    this.fabObserver = null;
     window.removeEventListener('resize', this.scheduleSync);
     window.visualViewport?.removeEventListener('resize', this.scheduleSync);
     window.removeEventListener('scroll', this.scheduleSync);
@@ -343,6 +387,42 @@ export class NativeBranchMapController {
     return window.scrollY + this.headerBottomViewport();
   }
 
+  /**
+   * Document-space rect of the floating AI assistant button, or null
+   * when it is not on screen (chat panel open / not mounted).
+   */
+  private aiFabRect(): NativeMapFrame | null {
+    const fab = document.querySelector('[data-ai-fab]');
+    if (!fab) return null;
+    const rect = fab.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  /**
+   * The AI-button cutout for the native side, in wire form: the
+   * button's document-space rect clipped to the map frame EXPANDED
+   * by the drop shadow's reach (the mask also paints the shadow, and
+   * the button must stay above that too), or [] when the button is
+   * clear of the map — which also clears a stale cutout natively.
+   */
+  private currentCutout(frame: NativeMapFrame): NativeMapCutout | [] {
+    const fab = this.aiFabRect();
+    if (!fab) return [];
+    const expand = 56; // shadow radius 24 + offset 24, rounded up
+    const x = Math.max(fab.x, frame.x - expand);
+    const y = Math.max(fab.y, frame.y - expand);
+    const right = Math.min(fab.x + fab.width, frame.x + frame.width + expand);
+    const bottom = Math.min(fab.y + fab.height, frame.y + frame.height + expand);
+    if (right <= x || bottom <= y) return [];
+    return [x, y, right - x, bottom - y];
+  }
+
   private scheduleSync = (): void => {
     if (this.rafId || this.destroyed) return;
     this.rafId = requestAnimationFrame(() => {
@@ -370,19 +450,25 @@ export class NativeBranchMapController {
       height: rect.height,
     };
     // Dedupe (half-point quantization): the native side only cares
-    // about the frame and the EFFECTIVE clip — how much of the
-    // placeholder's top the header band covers. While the map is
-    // clear of the header (or fully covered), scrolling changes
-    // neither, so nothing is sent.
+    // about the frame, the EFFECTIVE clip — how much of the
+    // placeholder's top the header band covers — and the effective
+    // AI-button cutout. While the map is clear of the header and the
+    // button (or fully covered), scrolling changes none of them, so
+    // nothing is sent.
     const q = (n: number) => Math.round(n * 2) / 2;
     const effectiveClip = Math.min(Math.max(clipTop - frame.y, 0), frame.height);
-    const key = [q(frame.x), q(frame.y), q(frame.width), q(frame.height), q(effectiveClip), visible].join('|');
+    const cutout = this.currentCutout(frame);
+    const cutKey = cutout.length === 4 ? cutout.map(q).join(',') : '-';
+    const key = [
+      q(frame.x), q(frame.y), q(frame.width), q(frame.height), q(effectiveClip), visible, cutKey,
+    ].join('|');
     if (key === this.lastSyncKey) return;
     this.lastSyncKey = key;
     void BranchMapNative.updateFrame({
       frame: { x: q(frame.x), y: q(frame.y), width: q(frame.width), height: q(frame.height) },
       visible,
       clipTop: q(clipTop),
+      cutout: cutout.length === 4 ? (cutout.map(q) as NativeMapCutout) : [],
     }).catch(() => undefined);
   }
 }

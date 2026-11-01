@@ -179,6 +179,7 @@ export default function AiAssistant() {
         <button
           type="button"
           aria-label="Chat with the MRC assistant"
+          data-ai-fab="true"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
