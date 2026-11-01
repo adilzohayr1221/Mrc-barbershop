@@ -98,6 +98,14 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
         mapView.showsScale = false
         mapView.isPitchEnabled = false
         mapView.isRotateEnabled = false
+        // The map is a fixed locator card inside the scrolling customer
+        // page: a finger drag on it must scroll the PAGE, never pan the
+        // map, and pinch must not zoom it — the owner reported the map
+        // "moves in the screen". Programmatic moves are unaffected:
+        // the +/− buttons, pin-selection fly-to and locate-me all set
+        // the region in code and keep working.
+        mapView.isScrollEnabled = false
+        mapView.isZoomEnabled = false
         mapView.showsUserLocation = false
         mapView.layer.cornerRadius = 20
         mapView.clipsToBounds = true
@@ -259,21 +267,32 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
                 animated: animated)
             return
         }
-        var rect = MKMapRect.null
+        // Center the whole set as one group in the middle of the map,
+        // with generous breathing room on every side: take the pins'
+        // midpoint and spans 2.6× their own spread, so each pin sits
+        // about 38% of the way from the center toward its edge —
+        // never flush with the frame corners and never under the
+        // locate fab or the +/− zoom stack (the owner's complaint was
+        // a tight bounding fit: "the pins are at the edges").
+        // regionThatFits only ever expands a span to match the view's
+        // aspect, so the pins can only gain room, never lose it.
+        var minLat = Double.greatestFiniteMagnitude
+        var maxLat = -Double.greatestFiniteMagnitude
+        var minLng = Double.greatestFiniteMagnitude
+        var maxLng = -Double.greatestFiniteMagnitude
         for annotation in annotations {
-            let point = MKMapPoint(annotation.coordinate)
-            rect = rect.union(MKMapRect(x: point.x, y: point.y, width: 0.1, height: 0.1))
+            minLat = min(minLat, annotation.coordinate.latitude)
+            maxLat = max(maxLat, annotation.coordinate.latitude)
+            minLng = min(minLng, annotation.coordinate.longitude)
+            maxLng = max(maxLng, annotation.coordinate.longitude)
         }
-        // Padding is measured to each pin's coordinate point, so it
-        // must also clear what floats around the point: the pin glyph
-        // itself (34×47, its top 41 pt above the tip) and the controls
-        // overlaid on the map — the locate fab at the top-left and the
-        // +/− zoom stack at the right-center, whose inner edge sits
-        // 56 pt from the right. The web fitBounds padding is [52, 52];
-        // the top and right get the extra room those overlays need.
-        mapView.setVisibleMapRect(rect,
-                                  edgePadding: UIEdgeInsets(top: 76, left: 68, bottom: 56, right: 100),
-                                  animated: animated)
+        let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
+                                            longitude: (minLng + maxLng) / 2)
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 2.6, 0.014),
+            longitudeDelta: max((maxLng - minLng) * 2.6, 0.014))
+        let region = MKCoordinateRegion(center: center, span: span)
+        mapView.setRegion(mapView.regionThatFits(region), animated: animated)
     }
 
     private func flyToAnnotation(_ annotation: ShopAnnotation) {
