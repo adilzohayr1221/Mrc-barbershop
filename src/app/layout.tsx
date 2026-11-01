@@ -19,33 +19,35 @@ const body = Inter({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-const SITE_URL = 'https://mrc-barbershop-mrc-0043.vercel.app';
-const OG_IMAGE = `${SITE_URL}/logo.jpg`;
+const SITE_URL = 'https://mrc-barbershop.vercel.app';
+const OG_IMAGE = `${SITE_URL}/og-image.png`;
+const DESCRIPTION =
+  "Book your cut at MRC Barbershops — Baltimore, MD. One free haircut with the $120 plan.";
 
 export const metadata: Metadata = {
   title: "MRC Barbershops",
-  description: "Book your cut at MRC Barbershops — Baltimore, MD",
+  description: DESCRIPTION,
   themeColor: "#faf6ea",
   metadataBase: new URL(SITE_URL),
   openGraph: {
     title: "MRC Barbershops",
-    description: "Book your cut at MRC Barbershops — Baltimore, MD",
+    description: DESCRIPTION,
     siteName: "MRC Barbershops",
     type: "website",
     url: SITE_URL,
     images: [
       {
         url: OG_IMAGE,
-        width: 1284,
-        height: 1284,
-        alt: "MRC Barbershops",
+        width: 1200,
+        height: 630,
+        alt: "MRC Barbershops — Book cuts. Save with plans.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "MRC Barbershops",
-    description: "Book your cut at MRC Barbershops — Baltimore, MD",
+    description: DESCRIPTION,
     images: [OG_IMAGE],
   },
   appleWebApp: {
