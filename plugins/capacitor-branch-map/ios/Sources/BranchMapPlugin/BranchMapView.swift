@@ -48,6 +48,20 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
     private var readyFired = false
     private var pendingLocate = false
 
+    // Top clip (points, view-local): the height of the map's top band
+    // that must not paint. This view is a subview of the WebView's
+    // scroll view, so it renders ABOVE web content — without the clip,
+    // scrolling the page slides the map up over the app's sticky
+    // header, hiding the MRC logo and the "MRC Barbershops" name
+    // behind it (owner report, 2026-11-01: the map must stay UNDER
+    // everything, strictly inside its card slot). The plugin pushes
+    // the clip down from the JS frame sync (the document-space Y of
+    // the sticky header's bottom edge); the mask below cuts the map
+    // exactly at that line, so the map appears to slide UNDER the
+    // header like ordinary page content.
+    private var topClip: CGFloat = 0
+    private let clipMaskLayer = CAShapeLayer()
+
     private static let gold = UIColor(red: 212.0 / 255, green: 175.0 / 255, blue: 55.0 / 255, alpha: 1)
     private static let goldDeep = UIColor(red: 122.0 / 255, green: 95.0 / 255, blue: 20.0 / 255, alpha: 1)
     private static let frostFill = UIColor(red: 1, green: 253.0 / 255, blue: 246.0 / 255, alpha: 0.85)
@@ -210,6 +224,58 @@ final class BranchMapView: UIView, MKMapViewDelegate, CLLocationManagerDelegate 
             didFitInitial = true
             fitAllPins(animated: false)
         }
+        // The clip mask is sized from bounds — keep it in step.
+        updateClipMask()
+    }
+
+    // MARK: Top clip (never paint over the sticky header)
+
+    /// Sets how much of the view's top (points, view-local) is clipped
+    /// away because it sits under the page's sticky header band. The
+    /// plugin recomputes this on every JS frame sync: clipTop
+    /// (document space) minus the view's frame origin.
+    func setTopClip(_ cut: CGFloat) {
+        let clamped = bounds.height > 0
+            ? min(max(cut, 0), bounds.height)
+            : max(cut, 0)
+        guard clamped != topClip else { return }
+        topClip = clamped
+        updateClipMask()
+    }
+
+    private func updateClipMask() {
+        // No clip → no mask at all, so the settled look (gold frame +
+        // drop shadow) is pixel-identical to the unclipped rendering.
+        guard topClip > 0, bounds.width > 0, bounds.height > 0 else {
+            layer.mask = nil
+            return
+        }
+        // Clamp against the CURRENT bounds (a stored clip from a
+        // taller frame must never produce a negative-height path).
+        let cut = min(topClip, bounds.height)
+        // Extend the mask past the sides and the bottom by more than
+        // the drop shadow's reach (radius 24 + offset 24) so the
+        // shadow keeps spilling onto the page exactly as before; only
+        // the top is cut, in one straight line at the header's edge.
+        let margin: CGFloat = 80
+        clipMaskLayer.frame = CGRect(x: -margin, y: 0,
+                                     width: bounds.width + margin * 2,
+                                     height: bounds.height + margin)
+        clipMaskLayer.fillColor = UIColor.white.cgColor
+        clipMaskLayer.path = UIBezierPath(
+            rect: CGRect(x: 0, y: cut,
+                         width: bounds.width + margin * 2,
+                         height: bounds.height - cut + margin)
+        ).cgPath
+        layer.mask = clipMaskLayer
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // The clipped band is not really the map — it is the header
+        // showing where the map slid under it. Touches there belong
+        // to the header / web content below, never to the map.
+        if point.y < topClip { return nil }
+        return super.hitTest(point, with: event)
     }
 
     // MARK: Data & selection (called by the plugin)

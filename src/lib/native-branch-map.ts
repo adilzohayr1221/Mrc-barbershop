@@ -62,14 +62,25 @@
  *   sits). A successful locate emits userLocated so the page can fill
  *   the same state the web locate fills; failures emit locateError with
  *   the web's exact message string.
- * - Scroll: none needed, by construction. The plugin embeds the
- *   native map INSIDE the WebView's scroll view, so the map is part
- *   of the page: its card scrolls with the content exactly (no lag,
- *   no drift, no floating overlay). Inside the map, gestures are
- *   NORMAL Apple Maps (owner's restored spec, 2026-11-01): a drag
- *   pans the map and a pinch zooms it, clipped inside its frame.
- *   Frames are re-sent only when the layout itself changes
- *   (resize / data), never on scroll.
+ * - Scroll: the frame itself never needs chasing, by construction.
+ *   The plugin embeds the native map INSIDE the WebView's scroll
+ *   view, so the map is part of the page: its card scrolls with the
+ *   content exactly (no lag, no drift, no floating overlay). Inside
+ *   the map, gestures are NORMAL Apple Maps (owner's restored spec,
+ *   2026-11-01): a drag pans the map and a pinch zooms it, clipped
+ *   inside its frame. Frames are re-sent when the layout changes
+ *   (resize / data).
+ * - Header clip (owner's order, 2026-11-01): as a scroll-view
+ *   subview the native map paints ABOVE web content, so scrolling
+ *   slid it over the app's sticky header — the MRC logo and the
+ *   "MRC Barbershops" name disappeared behind it. The map must stay
+ *   UNDER everything, strictly inside its card slot. So sync() also
+ *   runs on scroll (rAF-throttled, deduplicated — it costs nothing
+ *   while the map is clear of the header) and sends `clipTop`: the
+ *   document-space Y of the sticky header's bottom edge. The native
+ *   side masks the map at that line, so it slides UNDER the header
+ *   like ordinary page content, and hides it when the header band
+ *   covers it completely.
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -126,9 +137,10 @@ interface BranchMapPlugin {
     branches?: NativeBranchInput[];
     salons?: NativeSalonInput[];
     selectedId?: string | null;
+    clipTop?: number;
   }): Promise<void>;
   hide(): Promise<void>;
-  updateFrame(options: { frame: NativeMapFrame; visible: boolean }): Promise<void>;
+  updateFrame(options: { frame: NativeMapFrame; visible: boolean; clipTop: number }): Promise<void>;
   setData(options: { branches: NativeBranchInput[]; salons: NativeSalonInput[] }): Promise<void>;
   setSelected(options: { id: string | null; flyTo?: boolean }): Promise<void>;
   locateMe(): Promise<void>;
@@ -203,6 +215,8 @@ export class NativeBranchMapController {
   private rafId = 0;
   private shown = false;
   private destroyed = false;
+  /** Quantized key of the last updateFrame payload (scroll dedupe). */
+  private lastSyncKey: string | null = null;
 
   constructor(callbacks: NativeBranchMapCallbacks) {
     this.callbacks = callbacks;
@@ -246,15 +260,20 @@ export class NativeBranchMapController {
       branches: initial.branches,
       salons: initial.salons,
       selectedId: initial.selectedId,
+      clipTop: this.currentClipTop(),
     });
     this.shown = true;
 
-    // Frame sync: layout changes only — the map scrolls with the
-    // page natively, so there is deliberately no scroll listener.
+    // Frame sync on layout changes (the map scrolls with the page
+    // natively, so the frame itself never moves) — plus a scroll
+    // listener for the header clip only: clipTop is a function of
+    // the scroll position. sync() deduplicates, so scrolling while
+    // the map is nowhere near the header sends nothing.
     this.resizeObserver = new ResizeObserver(this.scheduleSync);
     this.resizeObserver.observe(el);
     window.addEventListener('resize', this.scheduleSync, { passive: true });
     window.visualViewport?.addEventListener('resize', this.scheduleSync, { passive: true });
+    window.addEventListener('scroll', this.scheduleSync, { passive: true });
     this.sync();
   }
 
@@ -284,6 +303,7 @@ export class NativeBranchMapController {
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.scheduleSync);
     window.visualViewport?.removeEventListener('resize', this.scheduleSync);
+    window.removeEventListener('scroll', this.scheduleSync);
     await Promise.all(this.listeners.map((l) => l.remove().catch(() => undefined)));
     this.listeners = [];
     if (this.shown) {
@@ -306,6 +326,23 @@ export class NativeBranchMapController {
     };
   }
 
+  /** Viewport-space Y of the sticky SiteHeader's bottom edge (0 if absent). */
+  private headerBottomViewport(): number {
+    const header =
+      document.querySelector('header.glass-header') ?? document.querySelector('header');
+    if (!header) return 0;
+    return Math.max(0, header.getBoundingClientRect().bottom);
+  }
+
+  /**
+   * Document-space Y of the sticky header's bottom edge. The native
+   * map must never paint above this line — the header (logo + name)
+   * stays on top of it at every scroll position.
+   */
+  private currentClipTop(): number {
+    return window.scrollY + this.headerBottomViewport();
+  }
+
   private scheduleSync = (): void => {
     if (this.rafId || this.destroyed) return;
     this.rafId = requestAnimationFrame(() => {
@@ -317,17 +354,35 @@ export class NativeBranchMapController {
   private sync(): void {
     if (!this.el || !this.shown || this.destroyed) return;
     const rect = this.el.getBoundingClientRect();
-    // Fully off-screen → park the native map (hidden) instead of
-    // letting it float over unrelated content.
-    const visible = rect.bottom > 0 && rect.top < window.innerHeight && rect.width > 0;
+    const headerBottom = this.headerBottomViewport();
+    const clipTop = window.scrollY + headerBottom;
+    // Visible = some part of the placeholder is inside the viewport
+    // AND below the sticky header band. Fully off-screen or fully
+    // covered by the header → park the native map (hidden) instead
+    // of letting it paint over unrelated content.
+    const visibleTop = Math.max(rect.top, headerBottom);
+    const visibleBottom = Math.min(rect.bottom, window.innerHeight);
+    const visible = visibleBottom > visibleTop && rect.width > 0;
+    const frame = {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+    // Dedupe (half-point quantization): the native side only cares
+    // about the frame and the EFFECTIVE clip — how much of the
+    // placeholder's top the header band covers. While the map is
+    // clear of the header (or fully covered), scrolling changes
+    // neither, so nothing is sent.
+    const q = (n: number) => Math.round(n * 2) / 2;
+    const effectiveClip = Math.min(Math.max(clipTop - frame.y, 0), frame.height);
+    const key = [q(frame.x), q(frame.y), q(frame.width), q(frame.height), q(effectiveClip), visible].join('|');
+    if (key === this.lastSyncKey) return;
+    this.lastSyncKey = key;
     void BranchMapNative.updateFrame({
-      frame: {
-        x: rect.left + window.scrollX,
-        y: rect.top + window.scrollY,
-        width: rect.width,
-        height: rect.height,
-      },
+      frame: { x: q(frame.x), y: q(frame.y), width: q(frame.width), height: q(frame.height) },
       visible,
+      clipTop: q(clipTop),
     }).catch(() => undefined);
   }
 }

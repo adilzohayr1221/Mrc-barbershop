@@ -13,9 +13,15 @@ import UIKit
 ///
 /// JS API (all coordinates are CSS pixels == UIKit points in the
 /// document's coordinate space):
-///   show({ frame, branches?, salons?, selectedId? })  create + reveal
+///   show({ frame, branches?, salons?, selectedId?, clipTop? })
+///                                                     create + reveal
 ///   hide()                                            conceal (kept alive)
-///   updateFrame({ frame, visible })                   scroll/resize sync
+///   updateFrame({ frame, visible, clipTop? })         scroll/resize sync
+/// clipTop is the document-space Y of the sticky header's bottom
+/// edge: the map is a scroll-view subview and would otherwise paint
+/// OVER the header (logo + name) when the page scrolls it up into
+/// the header band. The plugin clips the map at that line so it
+/// always stays under the header, inside its own card slot.
 ///   setData({ branches, salons })                     replace pins
 ///   setSelected({ id, flyTo? })                       selection echo
 ///   locateMe()                                        center on the user
@@ -43,6 +49,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
     private var mapView: BranchMapView?
     private var isShown = false
     private var lastHostFrame: CGRect = .zero
+    private var lastClipTop: Double?
     private var storedData: (branches: [BranchPinData], salons: [BranchPinData])?
     private var storedSelectedId: String?
 
@@ -50,6 +57,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func show(_ call: CAPPluginCall) {
         if let frame = parseFrame(call) { lastHostFrame = frame }
+        if let clipTop = call.getDouble("clipTop") { lastClipTop = clipTop }
         let dataProvided = call.getArray("branches") != nil || call.getArray("salons") != nil
         if dataProvided {
             storedData = (branches: parsePins(call.getArray("branches")),
@@ -65,6 +73,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             self.attachToScrollView(view)
             if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
+            self.applyClip(view)
             if dataProvided, let data = self.storedData {
                 view.setData(branches: data.branches, salons: data.salons)
             }
@@ -83,16 +92,28 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func updateFrame(_ call: CAPPluginCall) {
         if let frame = parseFrame(call) { lastHostFrame = frame }
+        if let clipTop = call.getDouble("clipTop") { lastClipTop = clipTop }
         let visible = call.getBool("visible") ?? true
         DispatchQueue.main.async { [weak self] in
             guard let self else { call.resolve(); return }
             if let view = self.mapView {
                 self.attachToScrollView(view)
                 if self.lastHostFrame != .zero { view.frame = self.lastHostFrame }
+                self.applyClip(view)
                 view.isHidden = !(self.isShown && visible)
             }
             call.resolve()
         }
+    }
+
+    /// Keeps the map under the sticky header: converts the stored
+    /// document-space clip line into the view-local top clip and
+    /// hands it to the view (which masks + hit-tests accordingly).
+    /// No-op when the web layer never sent a clipTop (older deploys),
+    /// preserving the previous behavior exactly.
+    private func applyClip(_ view: BranchMapView) {
+        guard let lastClipTop else { return }
+        view.setTopClip(CGFloat(lastClipTop) - view.frame.minY)
     }
 
     @objc func setData(_ call: CAPPluginCall) {
@@ -152,6 +173,7 @@ public class BranchMapPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         attachToScrollView(view)
         mapView = view
+        applyClip(view)
         if let storedData {
             view.setData(branches: storedData.branches, salons: storedData.salons)
         }
