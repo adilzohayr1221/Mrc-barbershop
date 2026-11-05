@@ -36,10 +36,10 @@ workflows:
           # Fetch the App Store provisioning profile
           app-store-connect fetch-signing-files "com.mrc.barbershop" --type IOS_APP_STORE || true
           # Xcode 16+ reads profiles from the UserData path, not the legacy MobileDevice path.
-          # Install the repo profile (UUID d4585252-7de1-476f-8373-80a9e71eedca) into BOTH, named by UUID.
+          # Install the repo profile (UUID 79dd238e-267c-435d-b8d8-83890e193a4f) into BOTH, named by UUID.
           mkdir -p ~/Library/MobileDevice/"Provisioning Profiles" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"
-          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/d4585252-7de1-476f-8373-80a9e71eedca.mobileprovision
-          cp assets/signing/profile.mobileprovision ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/d4585252-7de1-476f-8373-80a9e71eedca.mobileprovision
+          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/79dd238e-267c-435d-b8d8-83890e193a4f.mobileprovision
+          cp assets/signing/profile.mobileprovision ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/79dd238e-267c-435d-b8d8-83890e193a4f.mobileprovision
           ls ~/Library/MobileDevice/"Provisioning Profiles"/ ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/
       - name: Create export options
         script: |
@@ -65,8 +65,8 @@ workflows:
         script: |
           # Ensure the profile is installed in both locations Xcode reads (legacy + Xcode 16+ UserData)
           mkdir -p ~/Library/MobileDevice/"Provisioning Profiles" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"
-          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/d4585252-7de1-476f-8373-80a9e71eedca.mobileprovision 2>/dev/null || true
-          cp assets/signing/profile.mobileprovision ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/d4585252-7de1-476f-8373-80a9e71eedca.mobileprovision 2>/dev/null || true
+          cp assets/signing/profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/79dd238e-267c-435d-b8d8-83890e193a4f.mobileprovision 2>/dev/null || true
+          cp assets/signing/profile.mobileprovision ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/79dd238e-267c-435d-b8d8-83890e193a4f.mobileprovision 2>/dev/null || true
           ls ~/Library/MobileDevice/"Provisioning Profiles"/ ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/
           xcode-project build-ipa \
             --project ios/App/App.xcodeproj \
