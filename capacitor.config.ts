@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.mrc.barbershop',
   appName: 'MRC Barbershop',
   webDir: 'public',
+  backgroundColor: '#faf6ea',
   server: {
     url: 'https://mrc-barbershop-mrc-0043.vercel.app/customer',
     cleartext: false,
