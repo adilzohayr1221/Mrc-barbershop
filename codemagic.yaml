@@ -111,8 +111,10 @@ workflows:
         script: |
           # Own bundle identity for the barber app: barber Capacitor
           # config (appId com.mrc.barber, loads /barber-app), the final
-          # MRC Barber icon (black star on brand cream, owner's pick
-          # 2026-11-08), display name, and a fresh 1.0 (1) train.
+          # MRC Barber icon (approved by the owner 2026-11-08: black
+          # background, tan-gold disc #bda171, big black star + "MRC"
+          # centered as one block), display name, and a fresh 1.0 (1)
+          # train.
           cp capacitor.config.barber.ts capacitor.config.ts
           cp assets/barber-app/AppIcon-1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName MRC Barber" ios/App/App/Info.plist
