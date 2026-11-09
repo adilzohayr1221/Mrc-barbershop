@@ -81,3 +81,90 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  ios-barber-release:
+    name: iOS Barber Release (App Store)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: "App Store Connect API key"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'barber-app'
+          include: true
+          source: true
+    environment:
+      node: 22
+      xcode: latest
+      groups:
+        - ios-signing
+      vars:
+        APP_ID: com.mrc.barber
+        APP_NAME: MRC Barber
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm ci
+      - name: Barber app identity (config, icon, name, version)
+        script: |
+          # Own bundle identity for the barber app: barber Capacitor
+          # config (appId com.mrc.barber, loads /barber-app), the final
+          # MRC Barber icon (black star on brand cream, owner's pick
+          # 2026-11-08), display name, and a fresh 1.0 (1) train.
+          cp capacitor.config.barber.ts capacitor.config.ts
+          cp assets/barber-app/AppIcon-1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName MRC Barber" ios/App/App/Info.plist
+          sed -i '' 's/MARKETING_VERSION = 1.2;/MARKETING_VERSION = 1.0;/g; s/CURRENT_PROJECT_VERSION = 16;/CURRENT_PROJECT_VERSION = 1;/g; s/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barbershop;/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barber;/g' ios/App/App.xcodeproj/project.pbxproj
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER\|MARKETING_VERSION\|CURRENT_PROJECT_VERSION" ios/App/App.xcodeproj/project.pbxproj | sort -u
+      - name: Sync Capacitor iOS
+        script: |
+          npx cap sync ios
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          # Same account distribution certificate as the customer app.
+          openssl enc -d -aes-256-cbc -in ios/dist-final.p12.enc -out /tmp/dist.p12 -pass pass:$P12_DECRYPT_PASSWORD
+          keychain add-certificates --certificate /tmp/dist.p12 --certificate-password 1234
+          rm /tmp/dist.p12
+          KEYCHAIN_PATH=$(ls ~/Library/codemagic-cli-tools/keychains/*.keychain-db 2>/dev/null | head -1)
+          if [ -n "$KEYCHAIN_PATH" ]; then security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN_PATH" || true; fi
+          echo "Certificate installed, listing identities:"
+          security find-identity -v
+          # The bundle ID com.mrc.barber was registered via the ASC API;
+          # --create makes its App Store provisioning profile on first run.
+          app-store-connect fetch-signing-files "com.mrc.barber" --type IOS_APP_STORE --create
+          xcode-project use-profiles
+      - name: Create export options
+        script: |
+          cat > ~/export_options.plist << 'PLISTEOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>756WTBLYPA</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+          </dict>
+          </plist>
+          PLISTEOF
+          echo "Export options created"
+      - name: Build .ipa
+        script: |
+          xcode-project build-ipa \
+            --project ios/App/App.xcodeproj \
+            --scheme App \
+            --export-options-plist ~/export_options.plist \
+            --archive-flags "CODE_SIGN_IDENTITY='iPhone Distribution' DEVELOPMENT_TEAM=756WTBLYPA"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false
