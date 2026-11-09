@@ -8,6 +8,10 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://mrc-barbershop-mrc-0043.vercel.app/customer',
     cleartext: false,
+    // Refresh-in-place (owner, 2026-11-09): see capacitor.config.barber.ts —
+    // allow both production hosts so no same-host navigation or reload is
+    // ever handed to Safari by Capacitor's navigation policy.
+    allowNavigation: ['mrc-barbershop-mrc-0043.vercel.app', 'mrc-barbershop.vercel.app'],
   },
   ios: {
     contentInset: 'automatic',

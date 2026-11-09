@@ -113,12 +113,16 @@ workflows:
           # config (appId com.mrc.barber, loads /barber-app), the final
           # MRC Barber icon (approved by the owner 2026-11-08: black
           # background, tan-gold disc #bda171, big black star + "MRC"
-          # centered as one block), display name, and a fresh 1.0 (1)
-          # train.
+          # centered as one block), display name, and the 1.0 train.
+          # Build number bumped 1 -> 2 on 2026-11-09: build 1 is already
+          # in App Store Connect, and ASC rejects a duplicate build
+          # number. This build carries the refresh-in-place fix
+          # (server.allowNavigation in capacitor.config.barber.ts) and
+          # is the build submitted for App Review.
           cp capacitor.config.barber.ts capacitor.config.ts
           cp assets/barber-app/AppIcon-1024.png ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName MRC Barber" ios/App/App/Info.plist
-          sed -i '' 's/MARKETING_VERSION = 1.2;/MARKETING_VERSION = 1.0;/g; s/CURRENT_PROJECT_VERSION = 16;/CURRENT_PROJECT_VERSION = 1;/g; s/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barbershop;/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barber;/g' ios/App/App.xcodeproj/project.pbxproj
+          sed -i '' 's/MARKETING_VERSION = 1.2;/MARKETING_VERSION = 1.0;/g; s/CURRENT_PROJECT_VERSION = 16;/CURRENT_PROJECT_VERSION = 2;/g; s/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barbershop;/PRODUCT_BUNDLE_IDENTIFIER = com.mrc.barber;/g' ios/App/App.xcodeproj/project.pbxproj
           # The Release config hardcodes PROVISIONING_PROFILE_SPECIFIER =
           # "MRC Barbershop App Store" — a profile whose App ID is
           # com.mrc.barbershop. It must never survive into a barber archive

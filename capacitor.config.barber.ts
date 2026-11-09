@@ -15,6 +15,14 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://mrc-barbershop-mrc-0043.vercel.app/barber-app',
     cleartext: false,
+    // Refresh-in-place (owner, 2026-11-09): without an allowNavigation
+    // entry, Capacitor's navigation policy only treats URLs that start
+    // with the full server URL (path included) as in-app — every real
+    // barber page lives under /barber/*, outside the /barber-app entry
+    // path, so a pull-to-refresh / version reload there was cancelled
+    // and handed to Safari. Allowing both production hosts keeps every
+    // same-host navigation (and reload) inside the WebView.
+    allowNavigation: ['mrc-barbershop-mrc-0043.vercel.app', 'mrc-barbershop.vercel.app'],
   },
   ios: {
     contentInset: 'automatic',
