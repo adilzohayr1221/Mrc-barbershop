@@ -141,10 +141,21 @@ workflows:
           if [ -n "$KEYCHAIN_PATH" ]; then security set-key-partition-list -S apple-tool:,apple:,codesign: -s "$KEYCHAIN_PATH" || true; fi
           echo "Certificate installed, listing identities:"
           security find-identity -v
-          # The bundle ID com.mrc.barber was registered via the ASC API;
-          # --create makes its App Store provisioning profile on first run.
-          app-store-connect fetch-signing-files "com.mrc.barber" --type IOS_APP_STORE --create
-          # Point the project at the fetched barber profile explicitly and
+          # Fetch is best-effort only (same as the customer workflow): the
+          # authoritative profile is the repo copy below — "MRC Barber App
+          # Store" (UUID b79a9d03-37ee-43f3-91d2-74eca73048cd), created
+          # manually in the Apple Developer portal on 2026-11-09 for
+          # com.mrc.barber with the Push Notifications entitlement the app
+          # requires (aps-environment=production) and the same distribution
+          # certificate whose private key is in the .p12 above.
+          app-store-connect fetch-signing-files "com.mrc.barber" --type IOS_APP_STORE || true
+          # Xcode 16+ reads profiles from the UserData path, not the legacy MobileDevice path.
+          # Install the repo profile into BOTH, named by UUID.
+          mkdir -p ~/Library/MobileDevice/"Provisioning Profiles" ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"
+          cp assets/signing/barber-profile.mobileprovision ~/Library/MobileDevice/"Provisioning Profiles"/b79a9d03-37ee-43f3-91d2-74eca73048cd.mobileprovision
+          cp assets/signing/barber-profile.mobileprovision ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/b79a9d03-37ee-43f3-91d2-74eca73048cd.mobileprovision
+          ls ~/Library/MobileDevice/"Provisioning Profiles"/ ~/Library/Developer/Xcode/UserData/"Provisioning Profiles"/
+          # Point the project at the barber profile explicitly and
           # let use-profiles generate ~/export_options.plist from the real
           # profile assignment (bundle id -> profile name). Do NOT overwrite
           # that file afterwards: a hand-written export options plist without
@@ -154,6 +165,10 @@ workflows:
           grep -n "PRODUCT_BUNDLE_IDENTIFIER\|PROVISIONING_PROFILE_SPECIFIER\|CODE_SIGN_STYLE" ios/App/App.xcodeproj/project.pbxproj | sort -u
           if grep -q "MRC Barbershop App Store" ios/App/App.xcodeproj/project.pbxproj; then
             echo "ERROR: project still references the customer app provisioning profile"
+            exit 1
+          fi
+          if ! grep -q "MRC Barber App Store" ios/App/App.xcodeproj/project.pbxproj; then
+            echo "ERROR: project does not reference the MRC Barber App Store provisioning profile after use-profiles"
             exit 1
           fi
       - name: Verify export options
